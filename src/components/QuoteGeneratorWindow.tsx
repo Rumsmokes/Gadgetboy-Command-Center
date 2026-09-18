@@ -9,6 +9,7 @@ import type { SaleItemRow } from '../sales/SaleItemsTable';
 import MoneyInput from './MoneyInput';
 import PercentInput from './PercentInput';
 import CustomerOverviewWindow from './CustomerOverviewWindow';
+import QuoteOptionViewer from './QuoteOptionViewer';
 import html2pdfBundleRaw from 'html2pdf.js/dist/html2pdf.bundle.min.js?raw';
 
 const HTML2PDF_BUNDLE_INLINE = String(html2pdfBundleRaw || '').replace(/<\/script/gi, '<\\/script');
@@ -513,6 +514,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showOptionViewer, setShowOptionViewer] = useState(false);
   const [showHtmlPreview, setShowHtmlPreview] = useState(false);
   const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -534,6 +536,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [expandedQuoteMonths, setExpandedQuoteMonths] = useState<Record<string, boolean>>({});
   const quoteMetaRef = useRef<{ createdAt?: string; contentUpdatedAt?: string }>({});
   const quoteSnapshotRef = useRef('');
+  const quotePreviewRef = useRef<HTMLDivElement | null>(null);
   const [clientSearchOpen, setClientSearchOpen] = useState<Record<'sales' | 'repairs', boolean>>({ sales: false, repairs: false });
   const [addingClientFor, setAddingClientFor] = useState<'sales' | 'repairs' | null>(null);
   // Track expanded categories per item for Custom PC (keyed by item index string)
@@ -4370,6 +4373,13 @@ function QuoteGeneratorWindow(): JSX.Element {
     setShowPreview(true);
   }
 
+  async function toggleQuotePreviewFullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await quotePreviewRef.current?.requestFullscreen();
+    } catch {}
+  }
+
   async function openHtmlPreview() {
     try {
       if (mode !== 'sales') {
@@ -6410,9 +6420,12 @@ function QuoteGeneratorWindow(): JSX.Element {
               className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs whitespace-nowrap"
               onClick={openHtmlPreview}
             >Digital</button>
-            <button className="px-3 py-1.5 bg-[#39FF14] text-black rounded text-sm font-semibold hover:bg-[#32E610] whitespace-nowrap" onClick={printPreview}>Print</button>
+            <button className="px-3 py-1.5 bg-violet-700 text-white rounded text-sm font-semibold hover:bg-violet-600 whitespace-nowrap" onClick={() => setShowOptionViewer(true)}>Option Viewer</button>
+            <button className="px-3 py-1.5 bg-[#39FF14] text-black rounded text-sm font-semibold hover:bg-[#32E610] whitespace-nowrap" onClick={printPreview}>Show Preview</button>
           </div>
           </div>
+
+          {showOptionViewer && <QuoteOptionViewer onClose={() => setShowOptionViewer(false)} />}
 
           {showHtmlPreview && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={closeHtmlPreview}>
@@ -6649,9 +6662,13 @@ function QuoteGeneratorWindow(): JSX.Element {
           )}
 
           {showPreview && (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
+            <div ref={quotePreviewRef} className="quote-customer-preview fixed inset-0 bg-zinc-950 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
             {/* Floating toolbar outside the scrollable preview so Print is always accessible */}
-            <div className="absolute top-3 right-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <div className="absolute top-3 right-3 z-10 flex flex-wrap items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+              <button
+                className="px-4 py-2 bg-violet-700 text-white border border-violet-500 rounded-md text-base font-semibold hover:bg-violet-600 focus:outline-none focus:ring-2 focus:ring-violet-400/50"
+                onClick={() => void toggleQuotePreviewFullscreen()}
+              >Fullscreen</button>
               <button
                 className="px-4 py-2 bg-zinc-900 text-gray-100 border border-zinc-700 rounded-md text-base font-semibold hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#39FF14]/60"
                 onClick={printDocument}
@@ -6671,8 +6688,12 @@ function QuoteGeneratorWindow(): JSX.Element {
                   }
                 }}
               >Save</button>
+              <button
+                className="px-4 py-2 bg-zinc-800 text-gray-100 border border-zinc-700 rounded-md text-base font-semibold hover:bg-zinc-700"
+                onClick={() => setShowPreview(false)}
+              >Close</button>
             </div>
-            <div id="quote-print-root" className="bg-white text-black w-[1100px] max-w-[95vw] max-h-[90vh] overflow-auto rounded shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div id="quote-print-root" className="bg-white text-black overflow-auto shadow-xl" style={{ width: 'calc(100vw - 24px)', height: 'calc(100vh - 24px)', paddingTop: 54 }} onClick={(e) => e.stopPropagation()}>
               <div className="p-6">
                 {mode === 'sales' ? (
                   <div>
@@ -6688,6 +6709,10 @@ function QuoteGeneratorWindow(): JSX.Element {
                         #quote-print-root, #quote-print-root * { visibility: visible !important; }
                         /* Ensure the print container lays out from the top and is not clipped */
                         #quote-print-root { position: static !important; inset: auto !important; box-shadow: none !important; background: transparent !important; max-height: none !important; overflow: visible !important; width: auto !important; height: auto !important; }
+                      }
+                      @media screen {
+                        .quote-customer-preview #quote-print-root .print-page { width:min(100%, 1200px) !important; min-height:auto !important; margin:12px auto !important; }
+                        .quote-customer-preview #quote-print-root { scrollbar-color:#71717a #e4e4e7; scrollbar-width:thin; }
                       }
                     `}</style>
                     {/* Custom PC/Build preview pages OR default device view */}
