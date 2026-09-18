@@ -31,7 +31,7 @@ assert.match(calendar, /dailyLookData\.importantNotes/, 'Daily Look must include
 assert.match(calendar, /Streaming\/Content Schedule/, 'Adding notes must preserve the content schedule.');
 assert.match(calendar, /calendarView === 'week'/, 'Adding notes must preserve the mobile weekly calendar.');
 assert.match(calendar, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/, 'Calendar loads must retry transient cloud failures.');
-assert.match(electron, /key === 'calendarEvents'[\s\S]*cachedCalendar[\s\S]*throw e/, 'Desktop must not silently replace a populated cloud calendar with an empty cache.');
+assert.match(electron, /async function synchronizeDesktopCollection[\s\S]*existing,[\s\S]*fetchChanged:[\s\S]*persist: async \(rows\)[\s\S]*catch \(error: any\)[\s\S]*throw error/, 'Desktop incremental sync must preserve the cached calendar when a cloud refresh fails.');
 assert.match(journal, /calendarNotes/, 'Journal must read calendar notes.');
 assert.match(journal, /internalNotesLog/, 'Journal must include work-order repair notes.');
 assert.match(journal, /sales/, 'Journal must include sale notes.');
