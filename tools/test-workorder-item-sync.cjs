@@ -28,9 +28,9 @@ for (const source of [desktop, mobile]) {
   assert.match(source, /items:\s*cloudArray\(row\.items\)/, 'Supabase reads must restore complete work-order items JSON.');
 }
 assert.match(desktop, /queueCloudWriteForBackgroundSync\('upsert', key, updatedItem\)/, 'Desktop updates must durably queue Supabase synchronization before reporting success.');
-assert.match(desktop, /ipcMain\.handle\('db-find'[\s\S]*mergeCloudRowsIntoLocalCache\(key, cloudRows\)/, 'Cloud records opened through Find must be cached locally before desktop Update can persist them.');
-assert.doesNotMatch(desktop, /return opts \? cloudRows : mergedRows/, 'Sorted cloud reads must not bypass locally pending work-order changes.');
-assert.match(desktop, /const mergedRows = mergeCloudRowsIntoLocalCache\(key, cloudRows\);[\s\S]*return mergedRows;/, 'Every cloud DB read must return conflict-aware merged rows.');
+assert.match(desktop, /async function synchronizeDesktopCollection[\s\S]*persist: async \(rows\)[\s\S]*writeDb\(nextDb\)/, 'Explicit cloud synchronization must cache records locally before desktop Update can persist them.');
+assert.match(desktop, /ipcMain\.handle\('db-find'[\s\S]*const db = readDb\(\);[\s\S]*return list\.filter/, 'Desktop Find must query the durable local cache without downloading its cloud table.');
+assert.match(desktop, /pendingIds,[\s\S]*terminal: key === 'workOrders'/, 'Incremental reads must preserve queued local writes and terminal work-order state.');
 
 assert.match(workOrder, /missingRequired\.includes\('assignedTo'\)[\s\S]*cannot be saved or checked out/, 'Work orders must hard-block Save and Checkout without a technician.');
 assert.match(workOrder, /createWorkOrderPromiseRef/, 'Concurrent autosave, print, and checkout paths must share one work-order creation request.');
