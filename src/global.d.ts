@@ -88,6 +88,9 @@ declare global {
     dbResetAll: () => Promise<{ ok: boolean; removed?: string[]; errors?: string[]; dataRoot?: string }>;
     cloudSetSession: (payload: any) => Promise<any>;
     cloudClearSession: () => Promise<any>;
+    cloudCollectionChanged?: (key: string) => Promise<any>;
+    cloudSyncCollection?: (key: string, options?: { bootstrapLimit?: number }) => Promise<any>;
+    cloudGetSyncStatus?: () => Promise<{ ok: boolean; shopId?: string; lastSuccessAt?: string; lastError?: string; pendingSync?: number; collections?: Record<string, any> }>;
   sendRepairSelected: (repair: any) => void;
     openDevMenu: () => Promise<any>;
     devOpenUserDataFolder: () => Promise<any>;

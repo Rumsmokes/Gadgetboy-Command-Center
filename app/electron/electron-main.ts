@@ -13,6 +13,8 @@ const { registerGidgetLocalIpc } = require('./gidget-local');
 const { resolveDownloadedInstallerPath } = require('./update-launcher');
 const { createCheckoutSessionRegistry } = require('./checkout-session');
 import { preserveNewerWorkflow } from '../../src/lib/workorderWorkflowSync';
+import { synchronizeIncrementalCollection } from '../../src/lib/incrementalCloudSync';
+import type { CloudCursor } from '../../src/lib/incrementalSync';
 
 registerGidgetLocalIpc({ ipcMain, app });
 
@@ -4184,6 +4186,23 @@ type CloudSessionState = {
 let cloudSession: CloudSessionState | null = null;
 let cloudClient: any | null = null;
 
+type CloudCollectionSyncStatus = {
+  cursor: CloudCursor | null;
+  syncedAt: string;
+  rowsReceived: number;
+  approximateBytes: number;
+  lastError?: string;
+};
+
+type CloudSyncState = {
+  shopId: string;
+  lastSuccessAt: string;
+  lastError: string;
+  collections: Record<string, CloudCollectionSyncStatus>;
+};
+
+let cloudSyncState: CloudSyncState = { shopId: '', lastSuccessAt: '', lastError: '', collections: {} };
+
 type CloudSyncOperation = {
   id: string;
   op: 'upsert' | 'delete';
@@ -4284,6 +4303,7 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
   }
   cloudSession = { supabaseUrl, supabasePublishableKey, accessToken, shopId };
   cloudClient = null;
+  cloudSyncState = readCloudSyncState(shopId);
   try {
     const [customersCount, workOrdersCount, salesCount] = await Promise.all([
       getCloudCount('customers'),
@@ -4310,6 +4330,7 @@ ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
 ipcMain.handle('cloud:clearSession', async () => {
   cloudSession = null;
   cloudClient = null;
+  cloudSyncState = { shopId: '', lastSuccessAt: '', lastError: '', collections: {} };
   return { ok: true };
 });
 
@@ -4353,6 +4374,33 @@ function cloudObject(v: any): any {
 
 function cloudSyncQueuePath(): string {
   return path.join(resolveDataRoot(), 'cloud-sync-queue.json');
+}
+
+function cloudCursorPath(): string {
+  return path.join(resolveDataRoot(), 'cloud-sync-cursors.json');
+}
+
+function readCloudSyncState(shopId = cloudSession?.shopId || ''): CloudSyncState {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(cloudCursorPath(), 'utf8'));
+    if (parsed?.shopId === shopId && parsed?.collections && typeof parsed.collections === 'object') {
+      return {
+        shopId,
+        lastSuccessAt: String(parsed.lastSuccessAt || ''),
+        lastError: String(parsed.lastError || ''),
+        collections: parsed.collections,
+      };
+    }
+  } catch {}
+  return { shopId, lastSuccessAt: '', lastError: '', collections: {} };
+}
+
+function writeCloudSyncState(next: CloudSyncState) {
+  cloudSyncState = next;
+  try {
+    ensureDir(path.dirname(cloudCursorPath()));
+    fs.writeFileSync(cloudCursorPath(), JSON.stringify(next, null, 2), 'utf8');
+  } catch {}
 }
 
 function readCloudSyncQueue(): CloudSyncOperation[] {
@@ -5318,6 +5366,100 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   return rows;
 }
 
+async function cloudDbGetChanged(key: string, cursor: CloudCursor | null, limit = 0) {
+  const client = getCloudClient();
+  const table = CLOUD_TABLE_BY_KEY[String(key || '')];
+  if (!client || !cloudSession || !table) throw new Error('Cloud session is not ready.');
+  const pageSize = 1000;
+  const rawRows: any[] = [];
+  let pageStart = 0;
+  do {
+    const remaining = limit > 0 ? Math.max(0, limit - rawRows.length) : pageSize;
+    if (limit > 0 && remaining === 0) break;
+    const take = limit > 0 ? Math.min(pageSize, remaining) : pageSize;
+    let query = client.from(table)
+      .select('*')
+      .eq('shop_id', cloudSession.shopId)
+      .order('updated_at', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true, nullsFirst: false });
+    if (cursor?.updatedAt) query = query.gte('updated_at', cursor.updatedAt);
+    const response = await query.range(pageStart, pageStart + take - 1);
+    if (response.error) throw new Error(`Cloud ${key} incremental read failed: ${response.error.message}`);
+    const page = Array.isArray(response.data) ? response.data : [];
+    rawRows.push(...page);
+    if (page.length < take) break;
+    pageStart += take;
+  } while (limit <= 0 || rawRows.length < limit);
+
+  const extra = key === 'technicians' ? await getDesktopTechnicianCredentials() : undefined;
+  let rows = rawRows.map((row: any) => ({
+    ...fromCloudRow(key, row, extra),
+    cloudUpdatedAt: cloudDate(row.updated_at),
+  }));
+  if (key === 'technicians') rows = rows.filter(isAssignableDesktopTechnicianRow);
+  return rows;
+}
+
+async function synchronizeDesktopCollection(key: string, options: { bootstrapLimit?: number } = {}) {
+  if (!shouldUseCloudDb(key)) throw new Error(`Cloud collection is unavailable: ${key}`);
+  const db: any = readDb();
+  const existing = Array.isArray(db[key]) ? db[key] : [];
+  const pendingIds = new Set(
+    readCloudSyncQueue()
+      .filter((operation) => operation.key === key)
+      .map((operation) => String(operation.legacyId)),
+  );
+  const previous = cloudSyncState.collections[key];
+  const cursor = previous?.cursor || null;
+  try {
+    const result = await synchronizeIncrementalCollection({
+      collection: key,
+      existing,
+      cursor,
+      pendingIds,
+      terminal: key === 'workOrders' ? terminalWorkOrderState : undefined,
+      fetchChanged: (nextCursor) => cloudDbGetChanged(key, nextCursor, nextCursor ? 0 : Number(options.bootstrapLimit || 0)),
+      persist: async (rows) => {
+        const nextDb = { ...readDb(), [key]: rows };
+        writeDb(nextDb);
+      },
+    });
+    const collectionStatus: CloudCollectionSyncStatus = {
+      cursor: result.cursor,
+      syncedAt: result.syncedAt,
+      rowsReceived: result.rowsReceived,
+      approximateBytes: result.approximateBytes,
+    };
+    writeCloudSyncState({
+      ...cloudSyncState,
+      shopId: cloudSession?.shopId || cloudSyncState.shopId,
+      lastSuccessAt: result.syncedAt,
+      lastError: '',
+      collections: { ...cloudSyncState.collections, [key]: collectionStatus },
+    });
+    for (const row of result.changedRows) scheduleCollectionChanged(key, row);
+    return { ok: true, key, ...collectionStatus, changedRows: result.changedRows, pendingSync: readCloudSyncQueue().length };
+  } catch (error: any) {
+    const message = error?.message || String(error);
+    writeCloudSyncState({ ...cloudSyncState, lastError: message });
+    throw error;
+  }
+}
+
+ipcMain.handle('cloud:syncCollection', async (_event: any, key: string, options?: { bootstrapLimit?: number }) => {
+  try {
+    return await synchronizeDesktopCollection(String(key || ''), options || {});
+  } catch (error: any) {
+    return { ok: false, key, error: error?.message || String(error), pendingSync: readCloudSyncQueue().length };
+  }
+});
+
+ipcMain.handle('cloud:getSyncStatus', async () => ({
+  ok: !!cloudSession?.shopId,
+  ...cloudSyncState,
+  pendingSync: readCloudSyncQueue().length,
+}));
+
 function terminalWorkOrderState(record: any): boolean {
   const status = String(record?.status || '').trim().toLowerCase();
   return /^(closed|cancelled|canceled|void|refunded|deleted|archived)$/.test(status)
@@ -5592,24 +5734,6 @@ ipcMain.handle('db-reset-all', async () => {
 });
 
 ipcMain.handle('db-get', async (_e: any, key: string, opts?: { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' }) => {
-  if (shouldUseCloudDb(key)) {
-    try {
-      const cloudRows = await cloudDbGet(key, opts);
-      if (Array.isArray(cloudRows)) {
-        const mergedRows = mergeCloudRowsIntoLocalCache(key, cloudRows);
-        return mergedRows;
-      }
-    } catch (e: any) {
-      try { console.warn('[CloudDB] db-get fallback:', key, e?.message || e); } catch {}
-      // An empty local calendar cache must not masquerade as a successful cloud
-      // read. Let CalendarWindow retry instead of replacing a populated calendar
-      // with an unexplained blank view during a transient Supabase failure.
-      if (key === 'calendarEvents') {
-        const cachedCalendar = readDb()?.calendarEvents;
-        if (!Array.isArray(cachedCalendar) || cachedCalendar.length === 0) throw e;
-      }
-    }
-  }
   const db = readDb();
   const raw = db[key] || [];
   const list = Array.isArray(raw) ? raw : [];
@@ -5723,16 +5847,6 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
 });
 
 ipcMain.handle('db-find', async (_e: any, key: string, q: any) => {
-  if (shouldUseCloudDb(key)) {
-    try {
-      const cloudRows = await cloudDbGet(key);
-      if (Array.isArray(cloudRows)) {
-        return mergeCloudRowsIntoLocalCache(key, cloudRows).filter((it: any) => matchesDbQuery(it, q));
-      }
-    } catch (e: any) {
-      try { console.warn('[CloudDB] db-find fallback:', key, e?.message || e); } catch {}
-    }
-  }
   const db = readDb();
   const list = db[key] || [];
   return list.filter((it: any) => matchesDbQuery(it, q));
@@ -5958,14 +6072,6 @@ ipcMain.handle('tickets:search', async (_e: any, query: any, opts?: { limit?: nu
 });
 
 ipcMain.handle('db-count', async (_e: any, key: string, q: any) => {
-  if (shouldUseCloudDb(key)) {
-    try {
-      const cloudRows = await cloudDbGet(key);
-      if (Array.isArray(cloudRows)) return cloudRows.filter((it: any) => matchesDbQuery(it, q)).length;
-    } catch (e: any) {
-      try { console.warn('[CloudDB] db-count fallback:', key, e?.message || e); } catch {}
-    }
-  }
   const db = readDb();
   const list = db[key] || [];
   if (!Array.isArray(list) || list.length === 0) return 0;

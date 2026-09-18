@@ -6,6 +6,7 @@ export type CloudCursor = {
 export type IncrementalRow = {
   id: string | number;
   updated_at?: string | null;
+  cloudUpdatedAt?: string | null;
   updatedAt?: string | null;
   [key: string]: unknown;
 };
@@ -18,7 +19,7 @@ export type CollectionChange = {
 };
 
 function rowUpdatedAt(row: IncrementalRow): string {
-  return String(row.updated_at || row.updatedAt || '');
+  return String(row.updated_at || row.cloudUpdatedAt || row.updatedAt || '');
 }
 
 function compareRowPosition(a: IncrementalRow, b: IncrementalRow): number {

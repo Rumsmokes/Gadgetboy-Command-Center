@@ -165,6 +165,8 @@ contextBridge.exposeInMainWorld('api', {
   cloudSetSession: (payload: any): Promise<any> => ipcRenderer.invoke('cloud:setSession', payload),
   cloudClearSession: (): Promise<any> => ipcRenderer.invoke('cloud:clearSession'),
   cloudCollectionChanged: (key: string): Promise<any> => ipcRenderer.invoke('cloud:collectionChanged', key),
+  cloudSyncCollection: (key: string, options?: { bootstrapLimit?: number }): Promise<any> => ipcRenderer.invoke('cloud:syncCollection', key, options),
+  cloudGetSyncStatus: (): Promise<any> => ipcRenderer.invoke('cloud:getSyncStatus'),
   sendRepairSelected: (repair: any) => ipcRenderer.send('repair-selected', repair),
   _emitCheckoutSave: (result: any) => ipcRenderer.send('workorder:checkout:save', result),
   _emitCheckoutCancel: () => ipcRenderer.send('workorder:checkout:cancel'),

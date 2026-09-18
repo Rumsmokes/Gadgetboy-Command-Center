@@ -54,6 +54,7 @@
     "test:repair-deletion": "node tools/test-repair-deletion.cjs",
     "test:cloud-record-identity": "node tools/test-cloud-record-identity.cjs",
     "test:incremental-sync": "node tools/test-incremental-sync.cjs",
+    "test:desktop-incremental-sync": "node tools/test-desktop-incremental-sync.cjs",
     "test:ticket-catalog-pickers": "node tools/test-ticket-catalog-pickers.cjs",
     "test:catalog-settings-navigation": "node tools/test-catalog-settings-navigation.cjs",
     "test:vendor-catalog": "node tools/test-vendor-catalog.cjs",
