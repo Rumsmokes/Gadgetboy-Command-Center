@@ -38,10 +38,10 @@ assert.match(main, /customer-receipt:qr-failed/,
   'A silent receipt whose QR fails must surface the receipt window instead of printing without a QR.');
 assert.match(receipt, /notifyCustomerReceiptQrFailed/,
   'The receipt renderer must report a required QR failure to the Electron print window.');
-assert.match(receipt, /QR_LOOKUP_ATTEMPTS = 3/,
-  'Required receipt QR generation must retry transient cloud failures.');
-assert.match(receipt, /QR status URL timed out[\s\S]{0,80}5000/,
-  'Work-order and sales QR lookup must have a bounded failure path.');
+assert.match(receipt, /QRCode\.toDataURL\(GOOGLE_REVIEW_URL/,
+  'Customer receipts must generate their required Google Review QR locally.');
+assert.match(receipt, /!qrReady \|\| \(shouldRenderStatusQr && !qrDataUrl\)/,
+  'Customer receipt printing must wait for the locally generated review QR.');
 assert.match(consult, /QR status URL timed out[\s\S]{0,80}5000/,
   'Consultation QR lookup must have the same bounded failure path.');
 assert.equal(
