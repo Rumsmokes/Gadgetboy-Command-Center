@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { resolveContextMenuZIndex } from '../lib/contextMenuLayer';
+import { resolveContextMenuZIndex, resolveSubmenuViewportLayout } from '../lib/contextMenuLayer';
 import { closeMenuBeforeAction } from '../lib/reliability';
 
 export type ContextMenuItem =
@@ -25,8 +25,11 @@ export default function ContextMenu(props: {
 	const { open, x, y, items, onClose, minWidth = 240, id = 'ctx-menu', zIndex } = props;
 	const effectiveZIndex = resolveContextMenuZIndex(zIndex);
 	const menuRef = useRef<HTMLDivElement | null>(null);
+	const submenuRef = useRef<HTMLDivElement | null>(null);
 	const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 	const [openSubmenu, setOpenSubmenu] = useState<number | null>(null);
+	const [submenuAnchorTop, setSubmenuAnchorTop] = useState(0);
+	const [submenuLayout, setSubmenuLayout] = useState<{ top: number; maxHeight: number } | null>(null);
 
 	const hasItems = useMemo(() => items.some(it => (it as any)?.type !== 'separator'), [items]);
 
@@ -34,6 +37,7 @@ export default function ContextMenu(props: {
 		if (!open) {
 			setPos(null);
 			setOpenSubmenu(null);
+			setSubmenuLayout(null);
 			return;
 		}
 		// Start from the latest click position so the first open does not render at 0,0.
@@ -57,6 +61,12 @@ export default function ContextMenu(props: {
 
 		if (left !== currentLeft || top !== currentTop) setPos({ left, top });
 	}, [open, pos, x, y]);
+
+	useLayoutEffect(() => {
+		if (!open || openSubmenu == null || !submenuRef.current) { setSubmenuLayout(null); return; }
+		const rect = submenuRef.current.getBoundingClientRect();
+		setSubmenuLayout(resolveSubmenuViewportLayout({ anchorTop: submenuAnchorTop, submenuHeight: rect.height, viewportHeight: window.innerHeight, gap: 8 }));
+	}, [open, openSubmenu, submenuAnchorTop]);
 
 	useLayoutEffect(() => {
 		if (!open) return;
@@ -99,7 +109,7 @@ export default function ContextMenu(props: {
 
 					const hasChildren = !!item.children?.length;
 					return (
-						<div key={`it-${idx}`} className="relative" onMouseEnter={() => hasChildren && setOpenSubmenu(idx)} onMouseLeave={() => hasChildren && setOpenSubmenu(null)}>
+						<div key={`it-${idx}`} className="relative" onMouseEnter={(event) => { if (hasChildren) { setSubmenuAnchorTop(event.currentTarget.getBoundingClientRect().top); setOpenSubmenu(idx); } }} onMouseLeave={() => hasChildren && setOpenSubmenu(null)}>
 						<button
 							className={
 								`w-full text-left px-3 py-2 flex items-center justify-between gap-3 ` +
@@ -110,9 +120,9 @@ export default function ContextMenu(props: {
 										: 'hover:bg-zinc-800')
 							}
 							disabled={disabled}
-							onClick={async () => {
+							onClick={async (event) => {
 								if (disabled) return;
-								if (hasChildren) { setOpenSubmenu(current => current === idx ? null : idx); return; }
+								if (hasChildren) { setSubmenuAnchorTop((event.currentTarget.parentElement as HTMLElement).getBoundingClientRect().top); setOpenSubmenu(current => current === idx ? null : idx); return; }
 								await closeMenuBeforeAction(onClose, item.onClick);
 							}}
 							role={isInteractive(item) ? 'menuitem' : undefined}
@@ -120,7 +130,7 @@ export default function ContextMenu(props: {
 							<span>{item.label}</span>
 							{hasChildren ? <span className="text-xs text-zinc-400">▶</span> : item.hint ? <span className="text-xs text-zinc-500">{item.hint}</span> : null}
 						</button>
-						{hasChildren && openSubmenu === idx ? <div className={`absolute top-0 ${displayPos.left + minWidth * 2 > window.innerWidth ? 'right-full mr-1' : 'left-full ml-1'} min-w-60 rounded border border-zinc-700 bg-zinc-900 py-1 shadow-xl`} role="menu">{item.children!.map((child, childIndex) => {
+						{hasChildren && openSubmenu === idx ? <div ref={submenuRef} className={`absolute ${displayPos.left + minWidth * 2 > window.innerWidth ? 'right-full mr-1' : 'left-full ml-1'} min-w-60 overflow-y-auto rounded border border-zinc-700 bg-zinc-900 py-1 shadow-xl`} style={{ top: submenuLayout ? submenuLayout.top - submenuAnchorTop : 0, maxHeight: submenuLayout?.maxHeight || 'calc(100vh - 16px)' }} role="menu">{item.children!.map((child, childIndex) => {
 							if (child.type === 'separator') return <div key={childIndex} className="my-1 border-t border-zinc-800" />;
 							if (child.type === 'header') return <div key={childIndex} className="px-3 py-2 text-xs text-zinc-400">{child.label}</div>;
 							return <button key={childIndex} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-zinc-800 disabled:opacity-50" disabled={child.disabled} onClick={async () => { if (!child.disabled) await closeMenuBeforeAction(onClose, child.onClick); }}><span>{child.label}</span>{child.hint ? <span className="text-xs text-zinc-500">{child.hint}</span> : null}</button>;
