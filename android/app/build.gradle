@@ -11,7 +11,9 @@ def gbposVersionParts = gbposVersionName.tokenize('.').collect { part ->
 while (gbposVersionParts.size() < 3) {
     gbposVersionParts.add(0)
 }
-def gbposVersionCode = (gbposVersionParts[0] * 10000) + (gbposVersionParts[1] * 100) + gbposVersionParts[2]
+// Keep Android's internal build number above the former v0.6.x line while the
+// user-facing release series restarts at v0.1.0 in the new repository.
+def gbposVersionCode = 100000 + (gbposVersionParts[0] * 10000) + (gbposVersionParts[1] * 100) + gbposVersionParts[2]
 
 android {
     namespace = "com.gadgetboy.pos"
