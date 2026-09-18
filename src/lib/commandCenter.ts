@@ -4,6 +4,7 @@ import { expandRecurringEvent } from './calendarRecurrence';
 import { attentionReasonsForWorkOrder, workOrderAgeDays, type AttentionReason } from './workOrderLifecycle';
 import { buildRepairStatistics, repairPatternKey, type RepairStatistics } from './repairStatistics';
 import { productDeliveryFor } from './productDelivery';
+import { deriveOperationalStage, isOperationallyTerminal } from './repairWorkflow';
 
 export type CommandCenterKind = 'workorder' | 'sale' | 'consultation';
 
@@ -100,8 +101,7 @@ function sharedRecordAttention(record: CommandCenterRecord, customers: Map<strin
 }
 
 function isFinishedWorkOrder(workOrder: any) {
-  const status = lower(workOrder?.status);
-  return !!workOrder?.checkoutDate || /^(closed|cancelled|canceled|void|refunded|deleted|archived)$/.test(status);
+  return isOperationallyTerminal(workOrder);
 }
 
 function orderedPartState(workOrder: any) {
@@ -135,39 +135,7 @@ function outstandingBalance(record: any, total: number) {
 }
 
 function stageFor(workOrder: any, remaining: number, partState = orderedPartState(workOrder)) {
-  // A closed/checked-out record must never be resurrected by an older workflow
-  // stage left on the work order (for example, "Checked in" or "Diagnosing").
-  if (isFinishedWorkOrder(workOrder)) return 'Completed';
-  const currentStage = text(workOrder?.workflowStage || workOrder?.workflow_stage);
-  if (workOrder?.workflowUpdatedAt || workOrder?.workflow_updated_at) {
-    if (['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'].includes(currentStage)) {
-      return currentStage === 'Parts' && partState.ready ? 'Repair' : currentStage;
-    }
-  }
-  const raw = lower([workOrder?.repairStatus, workOrder?.statusUpdate, workOrder?.workflowStatus, workOrder?.status].filter(Boolean).join(' '));
-  // QR/client-update results are authoritative. Local/cloud synchronization can
-  // briefly leave workflowStage behind the newer repairStatus/statusUpdate.
-  if (/repair.*(complete|declined)|not.*(possible|repairable)|ready.*pickup/.test(raw)) return 'Pickup';
-  if (/testing/.test(raw)) return 'Testing';
-  if (/waiting.*device/.test(raw)) return 'Waiting Device';
-  if (/awaiting.*part|waiting.*part|part.*ordered/.test(raw) && !partState.ready) return 'Parts';
-  if (/part.*delivered|ready.*repair/.test(raw)) return 'Repair';
-  if (/awaiting.*approval|repair.*approval/.test(raw)) return 'Approval';
-  if (/diagnos/.test(raw)) return 'Diagnosing';
-  if (/repair.*(in progress|approved)/.test(raw)) return 'Repair';
-  const explicit = text(workOrder?.workflowStage || workOrder?.workflow_stage);
-  const known = ['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'];
-  if (known.includes(explicit)) return explicit === 'Parts' && partState.ready ? 'Repair' : explicit;
-  const lines = Array.isArray(workOrder?.items) ? workOrder.items : [];
-  const waitingPart = /awaiting.*part|waiting.*part|part.*ordered/.test(raw) || lines.some((line: any) => /ordered|awaiting|in transit/.test(lower(line?.orderStatus || line?.partStatus)));
-  const delivered = /part.*delivered|received/.test(raw) || lines.some((line: any) => /delivered|received/.test(lower(line?.orderStatus || line?.partStatus)));
-  if (/complete.*paid/.test(raw) && remaining <= 0) return 'Completed';
-  if (/pickup/.test(raw)) return 'Pickup';
-  if (/repair/.test(raw) && !waitingPart) return 'Repair';
-  if (waitingPart && !delivered) return 'Parts';
-  if (/approv|estimate/.test(raw)) return 'Approval';
-  if (/in progress/.test(raw)) return 'Diagnosing';
-  return 'Checked in';
+  return deriveOperationalStage(workOrder, { remaining, partsReady: partState.ready });
 }
 
 export function buildCommandCenterModel(input: CommandCenterInput): CommandCenterModel {

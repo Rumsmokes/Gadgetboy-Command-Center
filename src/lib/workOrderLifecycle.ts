@@ -38,7 +38,7 @@ export function shouldCloseWorkOrderAfterPayment(workOrder: any, remaining: numb
   if (!Number.isFinite(remaining) || remaining > 0.009) return false;
   // A zero current balance is not device completion: diagnostics and parts can
   // be prepaid at check-in. Only a pickup-ready device can auto-close on payment.
-  const stage = text(workOrder?.workflowStage || workOrder?.workflow_stage);
+  const stage = text(deriveOperationalStage(workOrder));
   if (stage && (workOrder?.workflowUpdatedAt || workOrder?.workflow_updated_at)) return stage === 'pickup';
   const status = text([workOrder?.repairStatus, workOrder?.statusUpdate, workOrder?.status].filter(Boolean).join(' '));
   return stage === 'pickup' || /ready.*pickup|repair.*complete|not.*repairable|repair not possible/.test(status);
@@ -92,9 +92,9 @@ export function attentionReasonsForWorkOrder(workOrder: any, context: { now?: Da
   const now = context.now || new Date(); const settings = normalizeCleanupSettings(context.settings); const result: AttentionReason[] = [];
   if (diagnosticCheckInClosureNeedsReview(workOrder, now)) result.push({ code: 'diagnostic-closed-at-checkin', label: 'Diagnostic payment closed the ticket at check-in — verify device is still here and restore if needed' });
   const status = text(workOrder?.status); const pickup = workOrder?.clientPickupDate || workOrder?.pickupDate || workOrder?.checkoutDate;
-  const stage=text(workOrder?.workflowStage||workOrder?.workflow_stage);
+  const stage=text(deriveOperationalStage(workOrder));
   const overdue=(value:any,days=0)=>{const at=new Date(value||0).getTime();return !!at&&Number.isFinite(at)&&now.getTime()-at>=days*86400000;};
-  const closed=status==='closed'||!!workOrder?.checkoutDate;
+  const closed=isOperationallyTerminal(workOrder);
   const checkInAt=workOrder?.checkInAt||workOrder?.createdAt;
   const lastTechnicianAt=workOrder?.lastTechnicianActivityAt||workOrder?.last_technician_activity_at||workOrder?.lastUpdateAt||workOrder?.last_update_at;
   const statusUpdatedAt=workOrder?.statusUpdatedAt||workOrder?.status_updated_at;
@@ -128,3 +128,4 @@ export function attentionReasonsForWorkOrder(workOrder: any, context: { now?: Da
   if(lifecycle.needsAttention) result.push({code:'pickup-storage-review',label:`Pickup overdue — review suggested $${lifecycle.suggestedStorageFee} storage fee`});
   return result;
 }
+import { deriveOperationalStage, isOperationallyTerminal } from './repairWorkflow';

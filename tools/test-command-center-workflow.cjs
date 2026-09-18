@@ -2,7 +2,16 @@ const assert=require('node:assert/strict');
 require('ts-node').register({transpileOnly:true,compilerOptions:{module:'CommonJS',moduleResolution:'Node'}});
 const {buildCommandCenterModel,liveCommandCenterPanelRecords}=require('../src/lib/commandCenter.ts');
 const {attentionReasonsForWorkOrder}=require('../src/lib/workOrderLifecycle.ts');
+const {deriveOperationalStage,isOperationallyTerminal}=require('../src/lib/repairWorkflow.ts');
 const now=new Date('2026-09-10T15:00:00.000Z');
+assert.equal(deriveOperationalStage({status:'open',workflowStage:'Checked in',repairStatus:'Testing In Progress'}),'Testing','A QR testing update must override a stale untimestamped stage.');
+assert.equal(deriveOperationalStage({status:'open',workflowStage:'Testing',workflowUpdatedAt:'2026-09-10T14:00:00Z',repairStatus:'Ready for Pickup'}),'Testing','A timestamped workflow stage must beat stale descriptive text.');
+assert.equal(deriveOperationalStage({status:'open',workflowStage:'Parts'},{partsReady:true}),'Repair','Delivered required parts must return a work order to Repair.');
+assert.equal(deriveOperationalStage({status:'open',workflowStage:'Checked in',repairStatus:'Not Repairable - Awaiting Pickup'}),'Pickup');
+for(const terminal of [
+ {status:'closed'}, {status:'cancelled'}, {status:'void'}, {status:'archived'}, {status:'open',pickedUpAt:'2026-09-10T14:00:00Z'},
+]) assert.equal(isOperationallyTerminal(terminal),true,`${terminal.status} tickets must be terminal.`);
+assert.equal(isOperationallyTerminal({status:'open',workflowStage:'Testing'}),false,'A reopened active ticket must not stay terminal.');
 const latestWorkflow=buildCommandCenterModel({now,workOrders:[{id:999,status:'open',workflowStage:'Testing',workflowUpdatedAt:'2026-09-10T14:00:00Z',repairStatus:'Repair Complete - Ready for Pickup',statusUpdate:'Testing In Progress'}]});
 assert.equal(latestWorkflow.workOrders[0].stage,'Testing','A timestamped workflow transition must not be overridden by stale descriptive fields.');
 const wo=(id,workflowStage,extra={})=>({id,status:'open',workflowStage,productDescription:`Device ${id}`,activityAt:'2026-09-09T12:00:00Z',items:[],...extra});

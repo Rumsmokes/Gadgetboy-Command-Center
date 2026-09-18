@@ -34,6 +34,57 @@ export function repairWorkflowDefinition(action: string): Definition {
 
 const atDateTime = (date?: string, time?: string) => date ? new Date(`${date}T${time || '12:00'}:00`).toISOString() : '';
 
+const normalizedText = (value: unknown) => String(value ?? '').trim().toLowerCase();
+const DISPLAY_STAGES: RepairWorkflowStage[] = ['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'];
+
+function knownStage(value: unknown): RepairWorkflowStage | null {
+  const raw = String(value ?? '').trim();
+  return DISPLAY_STAGES.find((stage) => stage.toLowerCase() === raw.toLowerCase()) || null;
+}
+
+export function isOperationallyTerminal(workOrder: any): boolean {
+  const status = normalizedText(workOrder?.status);
+  return /^(closed|cancelled|canceled|void|refunded|deleted|archived)$/.test(status)
+    || !!workOrder?.checkoutDate
+    || !!workOrder?.pickedUpAt
+    || !!workOrder?.picked_up_at
+    || !!workOrder?.clientPickupDate
+    || !!workOrder?.client_pickup_date;
+}
+
+export function deriveOperationalStage(
+  workOrder: any,
+  options: { partsReady?: boolean; remaining?: number } = {},
+): RepairWorkflowStage {
+  if (isOperationallyTerminal(workOrder)) return 'Completed';
+  const explicit = knownStage(workOrder?.workflowStage || workOrder?.workflow_stage);
+  if (explicit && (workOrder?.workflowUpdatedAt || workOrder?.workflow_updated_at)) {
+    return explicit === 'Parts' && options.partsReady ? 'Repair' : explicit;
+  }
+
+  const raw = normalizedText([
+    workOrder?.repairStatus,
+    workOrder?.statusUpdate,
+    workOrder?.workflowStatus,
+    workOrder?.status,
+  ].filter(Boolean).join(' '));
+  if (/repair.*(complete|declined)|not.*(possible|repairable)|cannot.*repair|ready.*pickup/.test(raw)) return 'Pickup';
+  if (/testing/.test(raw)) return 'Testing';
+  if (/waiting.*device/.test(raw)) return 'Waiting Device';
+  if (/awaiting.*part|waiting.*part|part.*ordered/.test(raw) && !options.partsReady) return 'Parts';
+  if (/part.*delivered|part.*received|ready.*repair/.test(raw)) return 'Repair';
+  if (/awaiting.*approval|repair.*approval|estimate.*approval/.test(raw)) return 'Approval';
+  if (/diagnos/.test(raw)) return 'Diagnosing';
+  if (/repair.*(in progress|approved)/.test(raw)) return 'Repair';
+  if (explicit) return explicit === 'Parts' && options.partsReady ? 'Repair' : explicit;
+  if (/complete.*paid/.test(raw) && Number(options.remaining || 0) <= 0) return 'Completed';
+  if (/pickup/.test(raw)) return 'Pickup';
+  if (/repair/.test(raw)) return 'Repair';
+  if (/approv|estimate/.test(raw)) return 'Approval';
+  if (/in progress/.test(raw)) return 'Diagnosing';
+  return 'Checked in';
+}
+
 export function applyRepairWorkflowAction(record: any, action: string, input: ActionInput = {}, now = new Date()) {
   const definition = repairWorkflowDefinition(action);
   const at = now.toISOString();
