@@ -33,12 +33,25 @@ export function isDiagnosticOnlyWorkOrder(workOrder: any) {
   const hasOther = lineNames.some(name => name && !/diagnostic|evaluation|assessment/.test(name));
   return hasDiagnostic && !hasOther;
 }
+function hasSubstantiveRepairLine(workOrder: any) {
+  const lines = Array.isArray(workOrder?.items) ? workOrder.items : [];
+  return lines.some((line: any) => {
+    const name = text(line?.repair || line?.description || line?.title || line?.name || line?.altDescription);
+    if (/diagnostic|evaluation|assessment/.test(name)) return false;
+    if (/(?:additional|expedited|storage|shipping|delivery|service|processing|convenience)\s+(?:service\s+)?fee|^fee$/.test(name)) return false;
+    const amount = Number(line?.price ?? line?.unitPrice ?? 0) + Number(line?.labor ?? 0) + Number(line?.parts ?? 0);
+    return !!name || amount > 0;
+  });
+}
 export function shouldCloseWorkOrderAfterPayment(workOrder: any, remaining: number, result: { markClosed?: boolean }) {
   if (result.markClosed) return true;
   if (!Number.isFinite(remaining) || remaining > 0.009) return false;
-  // A zero current balance is not device completion: diagnostics and parts can
-  // be prepaid at check-in. Only a pickup-ready device can auto-close on payment.
   const stage = text(deriveOperationalStage(workOrder));
+  if (['diagnosing', 'approval', 'parts', 'repair', 'testing'].includes(stage)) return false;
+  // Diagnostic and fee-only check-ins remain active after payment. Once a real
+  // repair/product line exists and no active workflow phase is in progress, a
+  // zero balance represents completed checkout.
+  if (hasSubstantiveRepairLine(workOrder)) return true;
   if (stage && (workOrder?.workflowUpdatedAt || workOrder?.workflow_updated_at)) return stage === 'pickup';
   const status = text([workOrder?.repairStatus, workOrder?.statusUpdate, workOrder?.status].filter(Boolean).join(' '));
   return stage === 'pickup' || /ready.*pickup|repair.*complete|not.*repairable|repair not possible/.test(status);

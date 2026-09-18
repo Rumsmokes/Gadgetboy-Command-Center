@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 require('ts-node').register({transpileOnly:true,compilerOptions:{module:'CommonJS',moduleResolution:'Node'}});
-const { normalizeCleanupSettings, classifyLegacyCleanup, buildLegacyClosePatch, attentionReasonsForWorkOrder, pickupLifecycleFor, buildPickedUpPatch }=require('../src/lib/workOrderLifecycle.ts');
+const { normalizeCleanupSettings, classifyLegacyCleanup, buildLegacyClosePatch, attentionReasonsForWorkOrder, pickupLifecycleFor, buildPickedUpPatch, shouldCloseWorkOrderAfterPayment }=require('../src/lib/workOrderLifecycle.ts');
 const now=new Date('2026-09-09T12:00:00Z');
 const settings=normalizeCleanupSettings({ diagnosticOnlyDays:20, closeAllDays:30, notRepairableAttentionDays:1, notStartedAttentionDays:2, staleAttentionDays:3, clientResponseAttentionDays:2, pickupReminderDays:8, pickupAttentionDays:12 });
 const diagnostic={ id:1, status:'open', checkInAt:'2026-08-19T12:00:00Z', amountPaid:50, totals:{total:50,remaining:0}, diagnosticSelection:{label:'Diagnostic Fee'}, items:[{description:'Diagnostic Fee',labor:true,price:50}] };
@@ -9,6 +9,10 @@ assert.equal(classifyLegacyCleanup({...diagnostic,checkInAt:'2026-08-20T13:00:00
 assert.equal(classifyLegacyCleanup({...diagnostic,checkInAt:'2026-08-01T12:00:00Z',items:[{description:'Screen repair',price:199}]},settings,now)?.reason,'universal-age');
 assert.equal(classifyLegacyCleanup({...diagnostic,status:'closed'},settings,now),null);
 assert.equal(classifyLegacyCleanup({...diagnostic,legacyCleanup:{closedAt:'x'}},settings,now),null);
+assert.equal(shouldCloseWorkOrderAfterPayment(diagnostic,0,{}),false,'Paying a diagnostic fee in full must keep the checked-in work order open.');
+assert.equal(shouldCloseWorkOrderAfterPayment({...diagnostic,items:[{description:'Diagnostic Fee',price:50},{description:'Additional Service Fee',price:20}]},0,{}),false,'Diagnostic and additional-fee lines alone must not close a work order.');
+assert.equal(shouldCloseWorkOrderAfterPayment({...diagnostic,items:[{description:'Diagnostic Fee',price:50},{repair:'PS5 HDMI Port Repair',labor:120,parts:40}]},0,{}),true,'A fully paid work order with a real repair line must close.');
+assert.equal(shouldCloseWorkOrderAfterPayment({...diagnostic,items:[{repair:'PS5 HDMI Port Repair',labor:120,parts:40}]},0.01,{}),false,'A repair with a remaining balance must stay open.');
 const patch=buildLegacyClosePatch({reason:'diagnostic-only',ageDays:21},now,settings);
 assert.equal(patch.status,'closed'); assert.equal('checkoutDate' in patch,false); assert.equal('amountPaid' in patch,false); assert.equal('totals' in patch,false);
 assert.ok(attentionReasonsForWorkOrder({status:'open',repairStatus:'Repair Not Possible',updatedAt:'2026-09-07T12:00:00Z'},{now,settings,technicianState:'resolved'}).some(x=>x.code==='not-repairable-awaiting-pickup'));
