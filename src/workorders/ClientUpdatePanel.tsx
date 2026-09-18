@@ -61,7 +61,7 @@ function normalizeType(value: any): UpdateType {
   return 'repair';
 }
 
-function mapCloudRow(type: UpdateType, row: any): any {
+export function mapCloudRow(type: UpdateType, row: any): any {
   if (!row) return null;
   if (type === 'sale') {
     return {

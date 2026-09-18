@@ -7,8 +7,10 @@ import { supabase } from '@/lib/supabase';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import CommandCenterRecordHoverCard from './CommandCenterRecordHoverCard';
 import { useContextMenu } from '@/lib/useContextMenu';
-import { subscribeWorkOrderUpdates } from '@/lib/workflowLiveRefresh';
+import { publishWorkOrderUpdate, subscribeWorkOrderUpdates } from '@/lib/workflowLiveRefresh';
 import { shouldReconcile } from '@/lib/incrementalSync';
+import { buildCommandCenterMoveRequest, commandCenterMoveFields, commandCenterMoveOptions, type CommandCenterMoveKey, type CommandCenterMoveValue } from '@/lib/commandCenterMove';
+import { mapCloudRow } from '@/workorders/ClientUpdatePanel';
 import '@/styles/command-center.css';
 
 type Props = {
@@ -42,6 +44,10 @@ export default function CommandCenter(props: Props) {
   const [staffReply,setStaffReply]=useState('');
   const [replyBusy,setReplyBusy]=useState(false);
   const [deliveryBusy,setDeliveryBusy]=useState('');
+  const [moveDialog,setMoveDialog]=useState<{record:CommandCenterRecord;key:CommandCenterMoveKey;label:string}|null>(null);
+  const [moveValue,setMoveValue]=useState<CommandCenterMoveValue>({});
+  const [moveBusy,setMoveBusy]=useState(false);
+  const [moveError,setMoveError]=useState('');
   const [syncStatus,setSyncStatus]=useState<{state:'idle'|'syncing'|'error';lastSuccessAt:string;pending:number;error:string}>({state:'idle',lastSuccessAt:'',pending:0,error:''});
   const [panel, setPanel] = useState<{ title: string; records?: CommandCenterRecord[]; kind?: 'today' | 'statistics' | 'product-delivery' } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ today: false });
@@ -270,6 +276,34 @@ export default function CommandCenter(props: Props) {
     if (longPressConsumed.current) { longPressConsumed.current = false; return; }
     void openRecord(record);
   };
+  const beginMove = (record: CommandCenterRecord, key: CommandCenterMoveKey, label: string) => {
+    const fields = commandCenterMoveFields(key);
+    const today = new Date().toISOString().slice(0, 10);
+    const defaults: CommandCenterMoveValue = key === 'part_delivered'
+      ? { deliveredDate: today, itemIndexes: [] }
+      : key === 'waiting_part' ? { orderDate: today } : {};
+    if (!fields.length) { void submitMove(record, key, defaults); return; }
+    setMoveValue(defaults); setMoveError(''); setMoveDialog({ record, key, label });
+  };
+  const submitMove = async (record: CommandCenterRecord, key: CommandCenterMoveKey, value: CommandCenterMoveValue) => {
+    if (moveBusy) return;
+    setMoveBusy(true); setMoveError('');
+    try {
+      const request = buildCommandCenterMoveRequest(record.source, key, value, `${record.id}:${key}:${crypto.randomUUID()}`);
+      const { data: delivery, error } = await supabase.functions.invoke('client-updates', { body: request });
+      if (error || !delivery?.ok || !delivery?.statusSaved || !delivery?.record) throw new Error(String((error as any)?.context?.body?.error || delivery?.error || error?.message || 'The workflow update could not be saved and sent.'));
+      const mapped = mapCloudRow('repair', delivery.record);
+      const merged = { ...record.source, ...mapped };
+      setData(current => ({ ...current, workOrders: upsertCommandCenterWorkOrder(current.workOrders, merged) }));
+      setPanel(current => current?.records ? { ...current, records: current.records.map(row => row.kind === 'workorder' && String(row.id) === String(record.id) ? { ...row, source: merged } : row) } : current);
+      publishWorkOrderUpdate(merged);
+      void (window as any).api?.dbUpdate?.('workOrders', record.id, merged);
+      setMoveDialog(null); setMoveValue({});
+    } catch (error: any) {
+      const message = error?.message || 'The work order was not moved.';
+      if (moveDialog) setMoveError(message); else window.alert(message);
+    } finally { setMoveBusy(false); }
+  };
   const menuRecord = recordMenu.state.data;
   const recordMenuItems = useMemo<ContextMenuItem[]>(() => {
     if (!menuRecord) return [];
@@ -283,6 +317,8 @@ export default function CommandCenter(props: Props) {
       { type: 'separator' },
       { label: 'Copy Invoice #', onClick: async () => { try { await navigator.clipboard.writeText(invoice); } catch {} } },
       ...(isWorkOrder ? [
+        { type: 'separator' } as ContextMenuItem,
+        { label: 'Move To', children: commandCenterMoveOptions(menuRecord.source).map(option => ({ label: option.label, disabled: option.key === ({'Diagnosing':'diagnosis','Approval':'repair_approval','Parts':'waiting_part','Repair':'part_delivered','Testing':'testing_in_progress','Pickup':'repair_complete'} as Record<string,string>)[String(menuRecord.stage || '')], onClick: () => beginMove(menuRecord, option.key, option.label) })) } as ContextMenuItem,
         { type: 'separator' } as ContextMenuItem,
         ...(diagnosticCheckInClosureNeedsReview(menuRecord.source) ? [{ label: 'Restore Diagnostic Drop-Off to Active', onClick: async () => {
           if (!window.confirm(`Is the device for ${invoice} still in the shop? Restore it to Checked in without changing its payments?`)) return;
@@ -389,5 +425,6 @@ export default function CommandCenter(props: Props) {
     <ContextMenu id="command-center-delivery-menu" open={deliveryMenu.state.open} x={deliveryMenu.state.x} y={deliveryMenu.state.y} items={deliveryMenuItems} onClose={deliveryMenu.close} zIndex={244} />
     <ContextMenu id="command-center-response-menu" open={responseMenu.state.open} x={responseMenu.state.x} y={responseMenu.state.y} items={responseMenuItems} onClose={responseMenu.close} zIndex={245} />
     {selectedResponse ? <div className="command-center-panel-layer" onMouseDown={event=>{if(event.target===event.currentTarget)setSelectedResponse(null)}}><section className="command-center-panel command-center-reply"><header><h2>Client Reply · WO #{selectedResponse.legacy_record_id}</h2><button aria-label="Close" onClick={()=>setSelectedResponse(null)}>×</button></header><div className="command-center-reply-body"><strong>{responseRecord(selectedResponse)?.customerName||'Client'} · {responseRecord(selectedResponse)?.deviceLabel||'Device'}</strong><p>{selectedResponse.message||`Client ${selectedResponse.response_type} the repair.`}</p><label>Send Reply<textarea value={staffReply} onChange={event=>setStaffReply(event.target.value)} placeholder="Type a response to the client…" /></label><div><button onClick={()=>{const record=responseRecord(selectedResponse);if(record)void openRecord(record)}}>Open Work Order</button><button onClick={()=>void resolveResponse(selectedResponse)}>Mark Resolved</button><button className="send" disabled={replyBusy||!staffReply.trim()} onClick={()=>void sendReply()}>{replyBusy?'Sending…':'Send Reply'}</button></div></div></section></div>:null}
+    {moveDialog ? <div className="command-center-panel-layer command-center-move-layer" onMouseDown={event=>{if(event.target===event.currentTarget&&!moveBusy)setMoveDialog(null)}}><section className="command-center-move-dialog" role="dialog" aria-modal="true" aria-labelledby="command-center-move-title"><header><div><small>WO #{moveDialog.record.id}</small><h2 id="command-center-move-title">Move to {moveDialog.label}</h2><p>{moveDialog.record.customerName} · {moveDialog.record.deviceLabel}</p></div><button aria-label="Close" disabled={moveBusy} onClick={()=>setMoveDialog(null)}>×</button></header><div className="command-center-move-fields">{commandCenterMoveFields(moveDialog.key).includes('partsEstimate')?<div className="command-center-move-money"><label>Parts estimate<input type="number" min="0" step="0.01" value={moveValue.partsEstimate||''} onChange={event=>setMoveValue(current=>({...current,partsEstimate:event.target.value}))}/></label><label>Labor estimate<input type="number" min="0" step="0.01" value={moveValue.laborEstimate||''} onChange={event=>setMoveValue(current=>({...current,laborEstimate:event.target.value}))}/></label></div>:null}{commandCenterMoveFields(moveDialog.key).includes('orderDate')?<label>Part ordered date<input type="date" value={moveValue.orderDate||''} onChange={event=>setMoveValue(current=>({...current,orderDate:event.target.value}))}/></label>:null}{commandCenterMoveFields(moveDialog.key).includes('estimatedDate')?<label>{moveDialog.key==='waiting_part'?'Expected delivery date':'Expected completion / arrival'}<input type="date" value={moveValue.estimatedDate||''} onChange={event=>setMoveValue(current=>({...current,estimatedDate:event.target.value}))}/></label>:null}{commandCenterMoveFields(moveDialog.key).includes('deliveredDate')?<label>Delivered date<input type="date" value={moveValue.deliveredDate||''} onChange={event=>setMoveValue(current=>({...current,deliveredDate:event.target.value}))}/></label>:null}{commandCenterMoveFields(moveDialog.key).includes('itemIndexes')?<fieldset><legend>Delivered parts/products</legend>{(moveDialog.record.source?.items||[]).map((item:any,index:number)=>{const physical=(item?.requiresOrder===true||item?.inStock===false||/needed|ordered|received|delivered|transit|awaiting/i.test(String(item?.orderStatus||item?.partStatus||'')))&&!item?.isLabor&&!/labor|diagnostic|fee/i.test(String(item?.type||item?.category||''));return physical?<label className="command-center-move-check" key={item.id||index}><input type="checkbox" checked={(moveValue.itemIndexes||[]).includes(index)} onChange={event=>setMoveValue(current=>({...current,itemIndexes:event.target.checked?[...(current.itemIndexes||[]),index]:(current.itemIndexes||[]).filter(value=>value!==index)}))}/><span>{item.repair||item.description||item.title||`Item ${index+1}`}</span></label>:null})}</fieldset>:null}{commandCenterMoveFields(moveDialog.key).includes('notes')?<label>{moveDialog.key==='not_possible'?'Reason / client explanation':moveDialog.key==='testing_in_progress'?'Testing details':'Details for the client'}<textarea value={moveValue.notes||''} onChange={event=>setMoveValue(current=>({...current,notes:event.target.value}))} placeholder="Add only the information the client needs…"/></label>:null}{moveError?<p className="command-center-move-error">{moveError}</p>:null}</div><footer><span>This saves the status and emails the client.</span><div><button disabled={moveBusy} onClick={()=>setMoveDialog(null)}>Cancel</button><button className="confirm" disabled={moveBusy} onClick={()=>void submitMove(moveDialog.record,moveDialog.key,moveValue)}>{moveBusy?'Saving & sending…':`Confirm ${moveDialog.label}`}</button></div></footer></section></div>:null}
   </div>;
 }

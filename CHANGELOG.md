@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.2 (2026-09-18)
+
+- Adds a responsive Move To submenu to Command Center work-order right-click and touch long-press menus.
+- Routes diagnosis, approval, ordered/delivered parts, testing, repair completion, and not-repairable changes through the same status, history, email, and live Command Center workflow used by QR updates.
+- Shows compact, action-specific detail forms only when dates, estimates, delivered items, or client-facing notes are needed; labor and fee rows cannot be marked as delivered parts.
+- Keeps the ticket in place and shows an error if the workflow update cannot be saved and sent.
+
 ## v0.6.99 (2026-09-15)
 
 - Fixes diagnostic and part prepayments incorrectly closing new work orders when their current balance reaches zero. Paid drop-offs remain active and eligible for the priority repair queue; only pickup-ready payment or explicit staff close completes the ticket.

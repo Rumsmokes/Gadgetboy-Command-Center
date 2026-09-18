@@ -4,7 +4,7 @@ import { resolveContextMenuZIndex } from '../lib/contextMenuLayer';
 import { closeMenuBeforeAction } from '../lib/reliability';
 
 export type ContextMenuItem =
-	| { type?: 'item'; label: string; onClick?: () => void | Promise<void>; disabled?: boolean; danger?: boolean; hint?: string }
+	| { type?: 'item'; label: string; onClick?: () => void | Promise<void>; disabled?: boolean; danger?: boolean; hint?: string; children?: ContextMenuItem[] }
 	| { type: 'separator' }
 	| { type: 'header'; label: string };
 
@@ -26,12 +26,14 @@ export default function ContextMenu(props: {
 	const effectiveZIndex = resolveContextMenuZIndex(zIndex);
 	const menuRef = useRef<HTMLDivElement | null>(null);
 	const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+	const [openSubmenu, setOpenSubmenu] = useState<number | null>(null);
 
 	const hasItems = useMemo(() => items.some(it => (it as any)?.type !== 'separator'), [items]);
 
 	useLayoutEffect(() => {
 		if (!open) {
 			setPos(null);
+			setOpenSubmenu(null);
 			return;
 		}
 		// Start from the latest click position so the first open does not render at 0,0.
@@ -95,9 +97,10 @@ export default function ContextMenu(props: {
 					const disabled = !!item.disabled;
 					const danger = !!item.danger;
 
+					const hasChildren = !!item.children?.length;
 					return (
+						<div key={`it-${idx}`} className="relative" onMouseEnter={() => hasChildren && setOpenSubmenu(idx)} onMouseLeave={() => hasChildren && setOpenSubmenu(null)}>
 						<button
-							key={`it-${idx}`}
 							className={
 								`w-full text-left px-3 py-2 flex items-center justify-between gap-3 ` +
 								(disabled
@@ -109,13 +112,20 @@ export default function ContextMenu(props: {
 							disabled={disabled}
 							onClick={async () => {
 								if (disabled) return;
+								if (hasChildren) { setOpenSubmenu(current => current === idx ? null : idx); return; }
 								await closeMenuBeforeAction(onClose, item.onClick);
 							}}
 							role={isInteractive(item) ? 'menuitem' : undefined}
 						>
 							<span>{item.label}</span>
-							{item.hint ? <span className="text-xs text-zinc-500">{item.hint}</span> : null}
+							{hasChildren ? <span className="text-xs text-zinc-400">▶</span> : item.hint ? <span className="text-xs text-zinc-500">{item.hint}</span> : null}
 						</button>
+						{hasChildren && openSubmenu === idx ? <div className={`absolute top-0 ${displayPos.left + minWidth * 2 > window.innerWidth ? 'right-full mr-1' : 'left-full ml-1'} min-w-60 rounded border border-zinc-700 bg-zinc-900 py-1 shadow-xl`} role="menu">{item.children!.map((child, childIndex) => {
+							if (child.type === 'separator') return <div key={childIndex} className="my-1 border-t border-zinc-800" />;
+							if (child.type === 'header') return <div key={childIndex} className="px-3 py-2 text-xs text-zinc-400">{child.label}</div>;
+							return <button key={childIndex} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-zinc-800 disabled:opacity-50" disabled={child.disabled} onClick={async () => { if (!child.disabled) await closeMenuBeforeAction(onClose, child.onClick); }}><span>{child.label}</span>{child.hint ? <span className="text-xs text-zinc-500">{child.hint}</span> : null}</button>;
+						})}</div> : null}
+						</div>
 					);
 				})}
 			</div>
