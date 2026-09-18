@@ -48,8 +48,10 @@ expect(read('supabase/functions/send-pos-email/index.ts').includes(".eq(\"delive
 expect(statusFunction.includes('format') && statusFunction.includes('text/calendar'), 'Consultation QR status must support calendar reminders.');
 expect(consultationPage.includes('/functions/v1/qr-status'), 'The consultation page must load through Supabase.');
 expect(salePrint.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales forms must use the Supabase-backed sale QR route.');
-expect(saleReceipt.includes("qrGetStatusUrl?.('sale', recordId)"), 'Printed sales tickets must generate a Supabase-backed sale QR code.');
-expect(saleReceipt.includes('alt="Sale update QR"'), 'Printed sales tickets must render the sale update QR image.');
+expect(saleReceipt.includes('GOOGLE_REVIEW_URL'), 'Customer receipts must use the shop Google Review destination.');
+expect(saleReceipt.includes('alt="Google Review QR"'), 'Customer receipts must render the Google Review QR image.');
+expect(saleReceipt.includes('SCAN ME'), 'Customer receipts must label the review QR with SCAN ME.');
+expect(!saleReceipt.includes("qrGetStatusUrl?.('sale', recordId)"), 'Customer receipts must not expose the internal sale-update route.');
 expect(saleReceipt.includes('qrReady'), 'Automatic sales-ticket printing must wait for the QR attempt to finish.');
 expect(consultSheet.includes("qrGetStatusUrl?.('consult', eventId)"), 'Printed consultation sheets must use the consultation calendar-event QR route.');
 expect(consultSheet.includes('alt="Consultation update QR"'), 'Printed consultation sheets must render the consultation QR image.');
