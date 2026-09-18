@@ -526,20 +526,21 @@ function useMobileRecords(refreshKey: number) {
 
   useEffect(() => {
     const api = window.api as any;
-    const refresh = () => void loadCore();
-    const offWO = api.onWorkOrdersChanged?.(refresh);
-    const offSales = api.onSalesChanged?.(refresh);
-    const offCustomers = api.onCustomersChanged?.(refresh);
-    const offTechs = api.onTechniciansChanged?.(refresh);
-    const offProducts = api.onProductsChanged?.(refresh);
+    const loadOne = async (key: string, setter: React.Dispatch<React.SetStateAction<any[]>>) => {
+      const rows = await api.dbGet(key).catch(() => []);
+      setter(Array.isArray(rows) ? rows : []);
+    };
+    const offWO = api.onWorkOrdersChanged?.(() => { void loadOne('workOrders', setWorkOrders); });
+    const offSales = api.onSalesChanged?.(() => { void loadOne('sales', setSales); });
+    const offCustomers = api.onCustomersChanged?.(() => { void loadOne('customers', setCustomers); });
+    const offTechs = api.onTechniciansChanged?.(() => { void loadOne('technicians', setTechnicians); });
     return () => {
       try { offWO && offWO(); } catch {}
       try { offSales && offSales(); } catch {}
       try { offCustomers && offCustomers(); } catch {}
       try { offTechs && offTechs(); } catch {}
-      try { offProducts && offProducts(); } catch {}
     };
-  }, [loadCore]);
+  }, []);
 
   return { workOrders, sales, customers, technicians, loading, error, reload: loadCore };
 }
@@ -681,6 +682,15 @@ const MobileAppRuntime: React.FC = () => {
       if (cancelled) return;
       if (res?.ok) {
         setCloudReady(true);
+        const limits: Record<string, number> = {
+          customers: 2500, technicians: 250, workOrders: 2500, sales: 2500,
+          calendarEvents: 2500, calendarNotes: 1000, purchaseOrders: 1000,
+          settings: 25, products: 2500, productCategories: 500,
+          deviceCategories: 500, repairCategories: 2500, partSources: 1000,
+        };
+        void Promise.all(Object.entries(limits).map(([key, bootstrapLimit]) =>
+          api.cloudSyncCollection?.(key, { bootstrapLimit }).catch(() => null)
+        ));
       } else {
         setCloudWarning(res?.error || 'Cloud session could not be started. Showing local cached data.');
         setCloudReady(true);
@@ -866,7 +876,9 @@ function MobileHome({ profile, cloudWarning, onSignOut, initialWindow = '' }: { 
     const offWO = api?.onWorkOrdersChanged?.(() => { void runNotificationSync(); });
     const offSales = api?.onSalesChanged?.(() => { void runNotificationSync(); });
     const offTech = api?.onTechniciansChanged?.(() => { void runNotificationSync(); });
-    const timer = window.setInterval(() => { void runNotificationSync(); }, 60_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void runNotificationSync();
+    }, 15 * 60_000);
     void runNotificationSync();
     return () => {
       alive = false;

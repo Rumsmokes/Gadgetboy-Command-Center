@@ -23,6 +23,7 @@ async function main() {
   assert.deepEqual(cursor, { updatedAt: sameTime, id: 'c' });
   assert.equal(isRowAfterCursor({ id: 'd', updated_at: sameTime }, cursor), true);
   assert.equal(isRowAfterCursor({ id: 'b', updated_at: sameTime }, cursor), false);
+  assert.equal(isRowAfterCursor({ id: 1, cloudCursorId: 'cloud-d', updated_at: sameTime }, cursor), true);
 
   const merged = mergeIncrementalRows(
     [

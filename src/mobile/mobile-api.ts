@@ -5,6 +5,7 @@ import { extractPartMetadataFromHtml, extractPartMetadataFromReader, normalizePa
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { getCloudEmailStatus, sendCloudEmail } from '../lib/cloudEmail';
 import { preserveNewerWorkflow } from '../lib/workorderWorkflowSync';
+import { cursorAfterRows, isRowAfterCursor, mergeIncrementalRows, type CloudCursor } from '../lib/incrementalSync';
 
 type SortOptions = { limit?: number; sortBy?: string; sortDir?: 'asc' | 'desc' };
 type CloudSession = {
@@ -99,9 +100,10 @@ const API_TO_MODAL: Record<string, string> = {
 
 let cloudSession: CloudSession | null = null;
 let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
-const listeners = new Map<string, Set<() => void>>();
+const listeners = new Map<string, Set<(payload?: any) => void>>();
 const localFallback = new Map<string, any[]>();
 const pendingQueueKey = 'gbpos-mobile-pending-sync';
+const mobileSyncStateKey = 'gbpos-mobile-sync-state:v1';
 const mobileBatchInfoKey = 'gbpos-mobile-batch-info:v1';
 
 function mobileLocalDateKey(date: Date) {
@@ -1234,22 +1236,49 @@ function writeLocalList(key: string, list: any[]) {
   }
 }
 
-function emitChanged(key: string) {
+function readCachedList(key: string, opts?: SortOptions): any[] {
+  const rows = readLocalList(key).slice();
+  const sortBy = String(opts?.sortBy || '');
+  if (sortBy) rows.sort((a, b) => {
+    const left = a?.[sortBy];
+    const right = b?.[sortBy];
+    const compared = typeof left === 'number' && typeof right === 'number'
+      ? left - right
+      : String(left || '').localeCompare(String(right || ''));
+    return opts?.sortDir === 'asc' ? compared : -compared;
+  });
+  return opts?.limit && opts.limit > 0 ? rows.slice(0, Math.floor(opts.limit)) : rows;
+}
+
+function readMobileSyncState(): { lastSuccessAt: string; collections: Record<string, CloudCursor | null> } {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(mobileSyncStateKey) || '{}');
+    return { lastSuccessAt: String(value?.lastSuccessAt || ''), collections: value?.collections && typeof value.collections === 'object' ? value.collections : {} };
+  } catch {
+    return { lastSuccessAt: '', collections: {} };
+  }
+}
+
+function writeMobileSyncState(state: { lastSuccessAt: string; collections: Record<string, CloudCursor | null> }) {
+  try { window.localStorage.setItem(mobileSyncStateKey, JSON.stringify(state)); } catch {}
+}
+
+function emitChanged(key: string, payload?: any) {
   const name = COLLECTION_CHANGED_EVENT[key];
   if (!name) return;
   const set = listeners.get(name);
   if (!set) return;
   for (const cb of Array.from(set)) {
     try {
-      cb();
+      cb(payload);
     } catch {
       // Listener failures should not break data saves.
     }
   }
 }
 
-function addListener(event: string, cb: () => void) {
-  const set = listeners.get(event) || new Set<() => void>();
+function addListener(event: string, cb: (payload?: any) => void) {
+  const set = listeners.get(event) || new Set<(payload?: any) => void>();
   set.add(cb);
   listeners.set(event, set);
   return () => set.delete(cb);
@@ -1374,6 +1403,75 @@ async function cloudDbGet(key: string, opts?: SortOptions): Promise<any[]> {
   }
   writeLocalList(key, rows);
   return rows;
+}
+
+function mobilePendingIds(key: string): Set<string> {
+  try {
+    const queue = JSON.parse(window.localStorage.getItem(pendingQueueKey) || '[]');
+    return new Set((Array.isArray(queue) ? queue : [])
+      .filter((operation: any) => operation?.key === key)
+      .map((operation: any) => String(operation?.item?.id ?? operation?.id ?? ''))
+      .filter(Boolean));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function isTerminalMobileWorkOrder(record: any): boolean {
+  return /^(closed|cancelled|canceled|void|refunded|deleted|archived)$/i.test(String(record?.status || ''))
+    || !!record?.checkoutDate || !!record?.pickedUpAt || !!record?.clientPickupDate;
+}
+
+async function syncMobileCollection(key: string, options: { bootstrapLimit?: number } = {}) {
+  const session = requireCloudSession();
+  const table = CLOUD_TABLE_BY_KEY[key];
+  if (!table) return { ok: true, key, changedRows: [], cached: readLocalList(key).length };
+  if (key === 'notificationSettings') {
+    const rows = await getPreferenceBackedList(key);
+    return { ok: true, key, changedRows: rows, cached: rows.length };
+  }
+
+  const state = readMobileSyncState();
+  const cursor = state.collections[key] || null;
+  const pageSize = 1000;
+  const bootstrapLimit = cursor ? 0 : Math.max(0, Number(options.bootstrapLimit || 0));
+  const rawRows: any[] = [];
+  let pageStart = 0;
+  do {
+    const remaining = bootstrapLimit > 0 ? Math.max(0, bootstrapLimit - rawRows.length) : pageSize;
+    if (bootstrapLimit > 0 && remaining === 0) break;
+    const take = bootstrapLimit > 0 ? Math.min(pageSize, remaining) : pageSize;
+    let query = supabase.from(table)
+      .select('*')
+      .eq('shop_id', session.shopId)
+      .order('updated_at', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true, nullsFirst: false });
+    if (cursor?.updatedAt) query = query.gte('updated_at', cursor.updatedAt);
+    const response = await query.range(pageStart, pageStart + take - 1);
+    if (response.error) throw new Error(`Cloud ${key} incremental read failed: ${response.error.message}`);
+    const page = Array.isArray(response.data) ? response.data : [];
+    rawRows.push(...page);
+    if (page.length < take) break;
+    pageStart += take;
+  } while (bootstrapLimit <= 0 || rawRows.length < bootstrapLimit);
+
+  const credentialExtra = key === 'technicians' ? await getTechnicianCredentials() : undefined;
+  let changedRows = rawRows.map((row: any) => ({
+    ...fromCloudRow(key, row, credentialExtra),
+    cloudUpdatedAt: cloudDate(row.updated_at),
+    cloudCursorId: String(row.id || ''),
+  })).filter((row: any) => isRowAfterCursor(row, cursor));
+  if (key === 'technicians') changedRows = changedRows.filter(isAssignableTechnicianRow);
+  const existing = readLocalList(key);
+  const merged = mergeIncrementalRows(existing, changedRows, mobilePendingIds(key), {
+    terminal: key === 'workOrders' ? isTerminalMobileWorkOrder : undefined,
+  });
+  writeLocalList(key, merged);
+  const nextCursor = cursorAfterRows(changedRows) || cursor;
+  const syncedAt = new Date().toISOString();
+  writeMobileSyncState({ lastSuccessAt: syncedAt, collections: { ...state.collections, [key]: nextCursor } });
+  if (changedRows.length) emitChanged(key, changedRows.length === 1 ? changedRows[0] : { changedRows });
+  return { ok: true, key, changedRows, cached: merged.length, lastSuccessAt: syncedAt };
 }
 
 async function getPreferenceBackedList(key: string): Promise<any[]> {
@@ -1550,7 +1648,9 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
     if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
     await syncTechnicianCredential(key, item, res.data);
     const saved = fromCloudRow(key, res.data || row);
-    emitChanged(key);
+    const current = readLocalList(key);
+    writeLocalList(key, [...current.filter((entry) => String(entry?.id) !== String(saved?.id)), saved]);
+    emitChanged(key, saved);
     return saved;
   } catch (e) {
     if (queueOnFailure) queuePending({ op: 'upsert', key, item });
@@ -1605,7 +1705,9 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
     if (!res.error) {
       await syncTechnicianCredential(key, candidate, res.data);
       const saved = fromCloudRow(key, res.data || row);
-      emitChanged(key);
+      const current = readLocalList(key);
+      writeLocalList(key, [...current.filter((entry) => String(entry?.id) !== String(saved?.id)), saved]);
+      emitChanged(key, saved);
       return saved;
     }
     lastError = res.error;
@@ -1651,7 +1753,8 @@ async function cloudDbDelete(key: string, legacyId: any, queueOnFailure = true):
     if (key === 'repairCategories' && (!Array.isArray(res.data) || res.data.length === 0)) {
       throw new Error(`Cloud ${key} delete failed: no matching saved record was removed.`);
     }
-    emitChanged(key);
+    writeLocalList(key, readLocalList(key).filter((entry) => String(entry?.id) !== String(legacyId)));
+    emitChanged(key, { id: legacyId, deleted: true });
     return true;
   } catch (e) {
     if (queueOnFailure) queuePending({ op: 'delete', key, id: legacyId });
@@ -1697,7 +1800,7 @@ async function dbAdd(key: string, item: any): Promise<any> {
 async function dbUpdate(key: string, a: any, b?: any): Promise<any> {
   const incoming = typeof b !== 'undefined' ? b : a;
   const targetId = typeof b !== 'undefined' ? a : incoming?.id;
-  const list = await cloudDbGet(key).catch(() => readLocalList(key));
+  const list = readLocalList(key);
   const previous = list.find((it) => String(it?.id) === String(targetId));
   const now = new Date().toISOString();
   const updated = { ...(previous || {}), ...(incoming || {}), id: targetId, updatedAt: now };
@@ -1706,12 +1809,12 @@ async function dbUpdate(key: string, a: any, b?: any): Promise<any> {
 }
 
 async function dbCount(key: string, q: any): Promise<number> {
-  const rows = await cloudDbGet(key).catch(() => readLocalList(key));
+  const rows = readLocalList(key);
   return rows.filter((it) => matchesDbQuery(it, q)).length;
 }
 
 async function dbFind(key: string, q: any): Promise<any[]> {
-  const rows = await cloudDbGet(key).catch(() => readLocalList(key));
+  const rows = readLocalList(key);
   return rows.filter((it) => matchesDbQuery(it, q));
 }
 
@@ -1765,7 +1868,22 @@ function setupRealtime() {
     realtimeChannel.on(
       'postgres_changes',
       { event: '*', schema: 'public', table, filter: `shop_id=eq.${cloudSession.shopId}` },
-      () => emitChanged(key),
+      (payload: any) => {
+        if (payload.eventType === 'DELETE') {
+          const deletedId = normalizeCloudId(payload.old);
+          if (deletedId !== null) writeLocalList(key, readLocalList(key).filter((row) => String(row?.id) !== String(deletedId)));
+          emitChanged(key, { id: deletedId, deleted: true });
+          return;
+        }
+        if (!payload.new) return;
+        const changed = { ...fromCloudRow(key, payload.new), cloudUpdatedAt: cloudDate(payload.new.updated_at), cloudCursorId: String(payload.new.id || '') };
+        const existing = readLocalList(key);
+        const merged = mergeIncrementalRows(existing, [changed], mobilePendingIds(key), {
+          terminal: key === 'workOrders' ? isTerminalMobileWorkOrder : undefined,
+        });
+        writeLocalList(key, merged);
+        emitChanged(key, changed);
+      },
     );
   }
   realtimeChannel.subscribe();
@@ -1798,12 +1916,15 @@ function makeApi() {
       };
       setupRealtime();
       await drainPending();
-      const [customers, workOrders, sales] = await Promise.all([
-        getCloudCount('customers'),
-        getCloudCount('workOrders'),
-        getCloudCount('sales'),
-      ]);
-      return { ok: true, counts: { customers, workOrders, sales }, pendingSync: 0 };
+      return {
+        ok: true,
+        counts: {
+          customers: readLocalList('customers').length,
+          workOrders: readLocalList('workOrders').length,
+          sales: readLocalList('sales').length,
+        },
+        pendingSync: mobilePendingIds('workOrders').size + mobilePendingIds('sales').size,
+      };
     },
     cloudClearSession: async () => {
       cloudSession = null;
@@ -1817,18 +1938,20 @@ function makeApi() {
       realtimeChannel = null;
       return { ok: true };
     },
-    getCustomers: (opts?: SortOptions) => cloudDbGet('customers', opts),
+    cloudSyncCollection: (key: string, options?: { bootstrapLimit?: number }) => syncMobileCollection(key, options),
+    cloudGetSyncStatus: async () => ({ ok: !!cloudSession?.shopId, ...readMobileSyncState() }),
+    getCustomers: (opts?: SortOptions) => Promise.resolve(readCachedList('customers', opts)),
     addCustomer: (item: any) => dbAdd('customers', item),
     findCustomers: (q: any) => dbFind('customers', q),
-    getWorkOrders: (opts?: SortOptions) => cloudDbGet('workOrders', opts),
+    getWorkOrders: (opts?: SortOptions) => Promise.resolve(readCachedList('workOrders', opts)),
     addWorkOrder: (item: any) => dbAdd('workOrders', item),
     findWorkOrders: (q: any) => dbFind('workOrders', q),
-    getDeviceCategories: () => cloudDbGet('deviceCategories'),
+    getDeviceCategories: () => Promise.resolve(readCachedList('deviceCategories')),
     addDeviceCategory: (item: any) => dbAdd('deviceCategories', item),
-    getProductCategories: () => cloudDbGet('productCategories'),
+    getProductCategories: () => Promise.resolve(readCachedList('productCategories')),
     addProductCategory: (item: any) => dbAdd('productCategories', item),
     update: (key: string, item: any) => dbUpdate(key, item),
-    dbGet: (key: string, opts?: SortOptions) => cloudDbGet(key, opts),
+    dbGet: (key: string, opts?: SortOptions) => Promise.resolve(readCachedList(key, opts)),
     dbCount,
     dbAdd,
     dbUpdate,

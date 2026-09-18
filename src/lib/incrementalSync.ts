@@ -5,6 +5,7 @@ export type CloudCursor = {
 
 export type IncrementalRow = {
   id: string | number;
+  cloudCursorId?: string | null;
   updated_at?: string | null;
   cloudUpdatedAt?: string | null;
   updatedAt?: string | null;
@@ -22,17 +23,21 @@ function rowUpdatedAt(row: IncrementalRow): string {
   return String(row.updated_at || row.cloudUpdatedAt || row.updatedAt || '');
 }
 
+function rowCursorId(row: IncrementalRow): string {
+  return String(row.cloudCursorId || row.id);
+}
+
 function compareRowPosition(a: IncrementalRow, b: IncrementalRow): number {
   const timeCompare = rowUpdatedAt(a).localeCompare(rowUpdatedAt(b));
   if (timeCompare !== 0) return timeCompare;
-  return String(a.id).localeCompare(String(b.id));
+  return rowCursorId(a).localeCompare(rowCursorId(b));
 }
 
 export function cursorAfterRows(rows: IncrementalRow[]): CloudCursor | null {
   if (!Array.isArray(rows) || rows.length === 0) return null;
   const latest = rows.reduce((current, row) => compareRowPosition(row, current) > 0 ? row : current);
   const updatedAt = rowUpdatedAt(latest);
-  return updatedAt ? { updatedAt, id: String(latest.id) } : null;
+  return updatedAt ? { updatedAt, id: rowCursorId(latest) } : null;
 }
 
 export function isRowAfterCursor(row: IncrementalRow, cursor: CloudCursor | null | undefined): boolean {
@@ -40,7 +45,7 @@ export function isRowAfterCursor(row: IncrementalRow, cursor: CloudCursor | null
   const updatedAt = rowUpdatedAt(row);
   if (updatedAt > cursor.updatedAt) return true;
   if (updatedAt < cursor.updatedAt) return false;
-  return String(row.id).localeCompare(cursor.id) > 0;
+  return rowCursorId(row).localeCompare(cursor.id) > 0;
 }
 
 export function mergeIncrementalRows<T extends IncrementalRow>(

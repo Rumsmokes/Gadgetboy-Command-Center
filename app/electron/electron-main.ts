@@ -5401,6 +5401,7 @@ async function cloudDbGetChanged(key: string, cursor: CloudCursor | null, limit 
   let rows = rawRows.map((row: any) => ({
     ...fromCloudRow(key, row, extra),
     cloudUpdatedAt: cloudDate(row.updated_at),
+    cloudCursorId: String(row.id || ''),
   }));
   if (key === 'technicians') rows = rows.filter(isAssignableDesktopTechnicianRow);
   return rows;
