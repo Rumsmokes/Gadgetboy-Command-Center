@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type"};
 const json=(body:Record<string,unknown>,status=200)=>new Response(JSON.stringify(body),{status,headers:{...cors,'content-type':'application/json;charset=utf-8','cache-control':'no-store'}});
 const hash=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(byte=>byte.toString(16).padStart(2,'0')).join('');
-const publicBase=()=>String(Deno.env.get('PUBLIC_APP_URL')||'https://mattstechwisdom.github.io/GB-POS').replace(/\/+$/,'');
+const publicBase=()=>String(Deno.env.get('PUBLIC_APP_URL')||'https://rumsmokes.github.io/Gadgetboy-Command-Center').replace(/\/+$/,'');
 Deno.serve(async req=>{
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
  try{

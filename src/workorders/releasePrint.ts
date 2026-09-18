@@ -400,7 +400,7 @@ export async function printReleaseForm(workOrder: WorkOrder, opts?: { logoSrc?: 
   if (recordId > 0) {
     let lastQrError: any = null;
     for (let attempt = 1; attempt <= 3 && !qrSrc; attempt += 1) try {
-      const publicBase = String((import.meta as any).env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/$/, '');
+      const publicBase = String((import.meta as any).env?.VITE_PUBLIC_APP_URL || 'https://rumsmokes.github.io/Gadgetboy-Command-Center').replace(/\/$/, '');
       let qrUrl = '';
       if (workOrder.workOrderType === 'durantReport') {
         qrUrl = `${publicBase}/?durantTicket=${encodeURIComponent(String(recordId))}`;

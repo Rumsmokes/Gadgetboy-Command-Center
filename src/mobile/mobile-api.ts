@@ -1089,7 +1089,7 @@ function getHostedAppUrl(): string {
   } catch {
     // ignore
   }
-  return 'https://mattstechwisdom.github.io/GB-POS';
+  return 'https://rumsmokes.github.io/Gadgetboy-Command-Center';
 }
 
 function makeQrToken(): string {

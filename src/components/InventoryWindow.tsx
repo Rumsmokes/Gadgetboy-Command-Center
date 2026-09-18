@@ -197,7 +197,7 @@ export default function InventoryWindow() {
   useEffect(() => {
     if (!labelItem?.id) { setLabelQr(''); return; }
     let cancelled = false;
-    const publicBase = String((import.meta as any).env?.VITE_PUBLIC_APP_URL || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/$/, '');
+    const publicBase = String((import.meta as any).env?.VITE_PUBLIC_APP_URL || 'https://rumsmokes.github.io/Gadgetboy-Command-Center').replace(/\/$/, '');
     QRCode.toDataURL(inventoryLabelUrl(labelItem.id, publicBase, `${new URL(publicBase).pathname}/`), { width: 360, margin: 1, errorCorrectionLevel: 'M' })
       .then((value) => { if (!cancelled) setLabelQr(value); })
       .catch((error) => console.error('Inventory label QR generation failed', error));

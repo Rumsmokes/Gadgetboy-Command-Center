@@ -1,4 +1,4 @@
-Web Interface: https://mattstechwisdom.github.io/GB-POS
+Web Interface: https://rumsmokes.github.io/Gadgetboy-Command-Center
 
 Open this URL in Safari on iPhone or iPad, sign in, then choose Share > Add to Home Screen. The installed app uses the GadgetBoy logo and opens in standalone mode.
 

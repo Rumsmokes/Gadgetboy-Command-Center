@@ -1100,7 +1100,7 @@ function getReleasesUrl(): string {
   } catch {
     // ignore
   }
-  return 'https://github.com/Mattstechwisdom/GB-POS/releases';
+  return 'https://github.com/Rumsmokes/Gadgetboy-Command-Center/releases';
 }
 
 let autoUpdateInitialized = false;
@@ -7159,7 +7159,7 @@ type QrStatusType = 'repair' | 'sale' | 'consult';
 
 function getPublicAppUrl(): string {
   const configured = String(process.env.GBPOS_PUBLIC_APP_URL || process.env.VITE_PUBLIC_APP_URL || '').trim();
-  return (configured || 'https://mattstechwisdom.github.io/GB-POS').replace(/\/+$/, '');
+  return (configured || 'https://rumsmokes.github.io/Gadgetboy-Command-Center').replace(/\/+$/, '');
 }
 
 function normalizeQrStatusType(value: any): QrStatusType {

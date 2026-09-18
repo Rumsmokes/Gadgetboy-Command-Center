@@ -27,9 +27,9 @@ expect(panel.includes('role="dialog"'), 'Update Client history must open in an a
 expect(panel.includes('Client Update History'), 'Update Client and QR panels must expose the history window.');
 expect(panel.includes('event.target === event.currentTarget'), 'The mobile history backdrop must close the daughter window.');
 expect(!panel.includes('gb-pos-production.up.railway.app'), 'Update Client still contains a Railway fallback.');
-expect(desktop.includes('https://mattstechwisdom.github.io/GB-POS'), 'Desktop QR links must use the free GitHub Pages app.');
+expect(desktop.includes('https://rumsmokes.github.io/Gadgetboy-Command-Center'), 'Desktop QR links must use the configured GitHub Pages app.');
 expect(desktop.includes('await cloudDbUpsert(recordKey, localRecord)'), 'QR creation must sync the underlying local ticket before issuing a cloud status link.');
-expect(mobile.includes('https://mattstechwisdom.github.io/GB-POS'), 'Mobile QR links must use the free GitHub Pages app.');
+expect(mobile.includes('https://rumsmokes.github.io/Gadgetboy-Command-Center'), 'Mobile QR links must use the configured GitHub Pages app.');
 expect(!mobile.includes('railway.app'), 'Mobile QR routing must not fall back to Railway.');
 expect(!read('src/components/GidgetChat.tsx').includes('railway.app'), 'Gidget must not fall back to Railway.');
 expect(mobileApp.includes("get('clientUpdateToken')"), 'The hosted mobile app must read QR update tokens.');

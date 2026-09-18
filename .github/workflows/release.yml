@@ -25,7 +25,7 @@ jobs:
       VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       VITE_SHOP_LOGIN_USERNAME: ${{ vars.VITE_SHOP_LOGIN_USERNAME || secrets.VITE_SHOP_LOGIN_USERNAME || 'Gadgetboyz' }}
       VITE_SHOP_LOGIN_EMAIL: ${{ vars.VITE_SHOP_LOGIN_EMAIL || secrets.VITE_SHOP_LOGIN_EMAIL }}
-      VITE_PUBLIC_APP_URL: https://mattstechwisdom.github.io/GB-POS
+      VITE_PUBLIC_APP_URL: https://rumsmokes.github.io/Gadgetboy-Command-Center
       VITE_DURANT_LOGIN_EMAIL: ${{ vars.VITE_DURANT_LOGIN_EMAIL || secrets.VITE_DURANT_LOGIN_EMAIL }}
       GBPOS_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.GBPOS_ANDROID_KEYSTORE_PASSWORD }}
       GBPOS_ANDROID_KEY_ALIAS: ${{ secrets.GBPOS_ANDROID_KEY_ALIAS }}
@@ -252,7 +252,7 @@ jobs:
           $version = $env:RELEASE_VERSION
           if (-not $version) { throw "RELEASE_VERSION is not set" }
           node -e "const fs=require('fs'); const v=process.env.RELEASE_VERSION; const raw=fs.readFileSync('CHANGELOG.md','utf8').replace(/\r\n/g,'\n'); const head=new RegExp('^## v'+v.replace(/[-/\\^$*+?.()|[\]{}]/g,'\\$&')+'\\b.*$','m'); const m=head.exec(raw); if(!m){ console.log('## v'+v+'\n\n- (No changelog section found)'); process.exit(0);} const start=m.index; const after=raw.slice(start); const next=after.slice(3).search(/^## v/m); const section=next>=0? after.slice(0, 3+next): after; const lines=section.split('\n'); const title=lines.shift(); const body=lines.join('\n').trim(); console.log((title||('## v'+v)).trim()+'\n\n'+(body||'- (No entries)')+'\n');" | Out-File -FilePath release-notes.md -Encoding utf8
-          Add-Content -Path release-notes.md -Value "`nWeb Interface: https://mattstechwisdom.github.io/GB-POS"
+          Add-Content -Path release-notes.md -Value "`nWeb Interface: https://rumsmokes.github.io/Gadgetboy-Command-Center"
           "RELEASE_NOTES_PATH=release-notes.md" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: List release artifacts

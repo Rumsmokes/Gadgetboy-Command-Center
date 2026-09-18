@@ -1,6 +1,6 @@
 const https = require('https');
 
-const repo = 'Mattstechwisdom/GB-POS';
+const repo = 'Rumsmokes/Gadgetboy-Command-Center';
 const currentVersion = String(process.argv[2] || '0.5.7').replace(/^v/i, '');
 
 function requestJson(url) {

@@ -22,8 +22,8 @@ export type MobileUpdate = {
   instructionsUrl?: string;
 };
 
-const repoLatestUrl = 'https://api.github.com/repos/Mattstechwisdom/GB-POS/releases/latest';
-const repoReleasesUrl = 'https://api.github.com/repos/Mattstechwisdom/GB-POS/releases?per_page=10';
+const repoLatestUrl = 'https://api.github.com/repos/Rumsmokes/Gadgetboy-Command-Center/releases/latest';
+const repoReleasesUrl = 'https://api.github.com/repos/Rumsmokes/Gadgetboy-Command-Center/releases?per_page=10';
 const skippedKey = 'gbpos-mobile-skipped-update';
 
 type MobileUpdateCheckProps = {

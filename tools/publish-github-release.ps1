@@ -105,7 +105,7 @@ if (-not $Repo) {
 }
 
 if (-not $Repo) {
-  throw 'Could not determine GitHub repo slug. Pass -Repo owner/repo (example: Mattstechwisdom/GB-POS).'
+  throw 'Could not determine GitHub repo slug. Pass -Repo owner/repo (example: Rumsmokes/Gadgetboy-Command-Center).'
 }
 
 if (-not $Version) {

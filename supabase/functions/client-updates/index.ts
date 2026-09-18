@@ -362,7 +362,7 @@ Deno.serve(async (req: Request) => {
       const allowedActions=statusKey==='repair_approval'?['approve','decline','question','add_information']:pickupAction?['confirm_pickup','request_pickup_change','question','add_information']:['question','add_information'];
       const {error:tokenInsertError}=await admin.from('client_response_tokens').insert({shop_id:profile.shop_id,work_order_id:record.id,legacy_record_id:legacyRecordId,token_hash:digest,allowed_actions:allowedActions,expires_at:new Date(Date.now()+30*86400000).toISOString()});
       if(tokenInsertError)throw httpError(500,'The secure client response link could not be created.');
-      const publicAppUrl=String(Deno.env.get('PUBLIC_APP_URL')||'https://mattstechwisdom.github.io/GB-POS').replace(/\/+$/,'');
+      const publicAppUrl=String(Deno.env.get('PUBLIC_APP_URL')||'https://rumsmokes.github.io/Gadgetboy-Command-Center').replace(/\/+$/,'');
       responseUrl=`${publicAppUrl}/client-response.html?token=${encodeURIComponent(raw)}`;
     }
     const email = emailCopy(details, statusKey, statusLabel, estimatedDate, estimatedTime, notes, responseUrl);
