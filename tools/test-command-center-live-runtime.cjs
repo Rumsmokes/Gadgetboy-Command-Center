@@ -26,15 +26,20 @@ app.whenReady().then(async () => {
   const win = new BrowserWindow({ show: false, width: 1200, height: 950, webPreferences: { contextIsolation: true, nodeIntegration: false } });
   try {
     await win.loadURL('about:blank');
-    await win.webContents.executeJavaScript(`document.body.innerHTML='<div id="root"></div>';window.rows=[];window.calendar=[{id:91,category:'task',title:'Clean repair bench',workOrderId:0,saleId:0,date:new Date().toLocaleDateString('en-CA')}];window.api={getCustomers:async()=>[],getWorkOrders:async()=>window.rows,dbGet:async key=>key==='calendarEvents'?window.calendar:key==='settings'?[{ticketCleanupSettings:{enabled:false}}]:[],onWorkOrdersChanged:cb=>{window.changed=cb;return ()=>{}},openNewWorkOrder:async()=>window.opened={type:'wrong-workorder'}};true;`);
+    await win.webContents.executeJavaScript(`document.body.innerHTML='<div id="root"></div>';window.rows=[];window.dbReads=0;window.syncCalls=0;window.calendar=[{id:91,category:'task',title:'Clean repair bench',workOrderId:0,saleId:0,date:new Date().toLocaleDateString('en-CA')}];window.api={getCustomers:async()=>{window.dbReads++;return []},getWorkOrders:async()=>{window.dbReads++;return window.rows},dbGet:async key=>{window.dbReads++;return key==='calendarEvents'?window.calendar:key==='settings'?[{ticketCleanupSettings:{enabled:false}}]:[]},cloudSyncCollection:async()=>{window.syncCalls++;return {ok:true,changedRows:[]}},cloudGetSyncStatus:async()=>({ok:true,lastSuccessAt:new Date().toISOString(),pendingSync:0}),onWorkOrdersChanged:cb=>{window.changed=cb;return ()=>{}},openNewWorkOrder:async()=>window.opened={type:'wrong-workorder'}};true;`);
     await win.webContents.executeJavaScript(bundle.outputFiles[0].text);
     await waitFor(win, `!!window.changed && !document.querySelector('.command-center-loading')`);
     const record = id => ({ id, status: 'open', checkInAt: new Date().toISOString(), activityAt: new Date().toISOString(), productDescription: `Device ${id}`, customerName: `Client ${id}`, items: [], checkoutDate: null, workflowStage: 'Checked in' });
     async function update(row) {
       await win.webContents.executeJavaScript(`{const row=${JSON.stringify(row)};window.rows=[row,...window.rows.filter(old=>old.id!==row.id)];window.changed(row);}true;`);
     }
+    const readsBeforeLiveUpdate = await win.webContents.executeJavaScript('window.dbReads');
     await update(record(1));
     await waitFor(win, `document.querySelector('.command-center-metrics button strong').textContent==='1' && document.querySelector('.queue').textContent.includes('Device 1')`);
+    assert.equal(await win.webContents.executeJavaScript('window.dbReads'), readsBeforeLiveUpdate, 'A work-order row event must patch the live model without rereading unrelated collections.');
+    const syncCallsBeforeRefresh = await win.webContents.executeJavaScript('window.syncCalls');
+    await win.webContents.executeJavaScript(`[...document.querySelectorAll('button')].find(button=>button.textContent==='Refresh').click();true;`);
+    await waitFor(win, `window.syncCalls>=${syncCallsBeforeRefresh + 8}`);
     await win.webContents.executeJavaScript(`document.querySelector('.command-center-metrics button').click();true;`);
     await waitFor(win, `document.querySelector('.command-center-panel').textContent.includes('Device 1')`);
     for (let id = 2; id <= 10; id++) await update(record(id));

@@ -8,6 +8,7 @@ import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import CommandCenterRecordHoverCard from './CommandCenterRecordHoverCard';
 import { useContextMenu } from '@/lib/useContextMenu';
 import { subscribeWorkOrderUpdates } from '@/lib/workflowLiveRefresh';
+import { shouldReconcile } from '@/lib/incrementalSync';
 import '@/styles/command-center.css';
 
 type Props = {
@@ -41,6 +42,7 @@ export default function CommandCenter(props: Props) {
   const [staffReply,setStaffReply]=useState('');
   const [replyBusy,setReplyBusy]=useState(false);
   const [deliveryBusy,setDeliveryBusy]=useState('');
+  const [syncStatus,setSyncStatus]=useState<{state:'idle'|'syncing'|'error';lastSuccessAt:string;pending:number;error:string}>({state:'idle',lastSuccessAt:'',pending:0,error:''});
   const [panel, setPanel] = useState<{ title: string; records?: CommandCenterRecord[]; kind?: 'today' | 'statistics' | 'product-delivery' } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ today: false });
   const recordMenu = useContextMenu<CommandCenterRecord>();
@@ -52,13 +54,28 @@ export default function CommandCenter(props: Props) {
   const loadGenerationRef = useRef(0);
   const closedWorkOrderIdsRef = useRef(new Set<string>());
   const resolvedResponseIdsRef = useRef(readResolvedResponseIds());
+  const lastReconcileRef = useRef(0);
+
+  const loadClientResponses = useCallback(async () => {
+    const responseResult = await supabase.from('client_responses')
+      .select('id,shop_id,work_order_id,legacy_record_id,customer_id,response_type,message,unread,resolved_at,created_at,delivery_status')
+      .is('resolved_at', null)
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (responseResult.error) return;
+    const unresolvedRows = responseResult.data || [];
+    const unresolvedIds = new Set(unresolvedRows.map((row:any)=>String(row.id)));
+    for (const id of Array.from(resolvedResponseIdsRef.current)) if (!unresolvedIds.has(id)) resolvedResponseIdsRef.current.delete(id);
+    persistResolvedResponseIds(resolvedResponseIdsRef.current);
+    setClientResponses(unresolvedRows.filter((row:any)=>!resolvedResponseIdsRef.current.has(String(row.id))));
+  }, []);
 
   const load = useCallback(async () => {
     const loadGeneration = loadGenerationRef.current += 1;
     const api: any = (window as any).api;
     if (!api) return setLoading(false);
     try {
-      const [customers, technicians, workOrders, sales, calendarEvents, calendarNotes, purchaseOrders, settingsRows, responseResult] = await Promise.all([
+      const [customers, technicians, workOrders, sales, calendarEvents, calendarNotes, purchaseOrders, settingsRows] = await Promise.all([
         (api.getCustomers?.() ?? api.dbGet('customers')).catch(() => []),
         api.dbGet('technicians').catch(() => []),
         (api.getWorkOrders?.({ limit: 2000, sortBy: 'activityAt', sortDir: 'desc' }) ?? api.dbGet('workOrders')).catch(() => []),
@@ -67,7 +84,6 @@ export default function CommandCenter(props: Props) {
         api.dbGet('calendarNotes').catch(() => []),
         api.dbGet('purchaseOrders').catch(() => []),
         api.dbGet('settings').catch(() => []),
-        supabase.from('client_responses').select('*').is('resolved_at',null).order('created_at',{ascending:false}).limit(100),
       ]);
       const cleanup = await reconcileLegacyWorkOrders(api, { workOrders: workOrders || [], settings: settingsRows?.[0]?.ticketCleanupSettings });
       const updatedById = new Map(cleanup.updatedRecords.map(record => [String(record.id), record]));
@@ -77,13 +93,7 @@ export default function CommandCenter(props: Props) {
       const attentionSettings = settingsRows?.[0]?.ticketCleanupSettings;
       if (loadGeneration !== loadGenerationRef.current) return;
       setData({ customers: customers || [], technicians: technicians || [], workOrders: reconciledWorkOrders, sales: sales || [], calendarEvents: calendarEvents || [], calendarNotes: calendarNotes || [], purchaseOrders: purchaseOrders || [], attentionSettings });
-      if(!responseResult.error) {
-        const unresolvedRows = responseResult.data || [];
-        const unresolvedIds = new Set(unresolvedRows.map((row:any)=>String(row.id)));
-        for (const id of Array.from(resolvedResponseIdsRef.current)) if (!unresolvedIds.has(id)) resolvedResponseIdsRef.current.delete(id);
-        persistResolvedResponseIds(resolvedResponseIdsRef.current);
-        setClientResponses(unresolvedRows.filter((row:any)=>!resolvedResponseIdsRef.current.has(String(row.id))));
-      }
+      await loadClientResponses();
       for(const workOrder of reconciledWorkOrders){
         if(!pickupLifecycleFor(workOrder,new Date(),attentionSettings).reminderDue) continue;
         try{
@@ -92,44 +102,94 @@ export default function CommandCenter(props: Props) {
         }catch(error){console.warn('Automatic pickup reminder is still pending',error)}
       }
     } finally { setLoading(false); }
+  }, [loadClientResponses]);
+
+  const refreshCollection = useCallback(async (key: string) => {
+    const api: any = (window as any).api;
+    if (!api?.dbGet) return;
+    const rows = await api.dbGet(key).catch(() => []);
+    if (key === 'settings') return setData(current => ({ ...current, attentionSettings: rows?.[0]?.ticketCleanupSettings }));
+    const fieldByKey: Record<string, keyof typeof data> = {
+      customers: 'customers', technicians: 'technicians', workOrders: 'workOrders', sales: 'sales',
+      calendarEvents: 'calendarEvents', calendarNotes: 'calendarNotes', purchaseOrders: 'purchaseOrders',
+    };
+    const field = fieldByKey[key];
+    if (field) setData(current => ({ ...current, [field]: Array.isArray(rows) ? rows : [] }));
   }, []);
+
+  const reconcileCloud = useCallback(async (force = false) => {
+    const api: any = (window as any).api;
+    if (!api?.cloudSyncCollection) return;
+    if (!force) {
+      const status = await api.cloudGetSyncStatus?.().catch(() => null);
+      const lastSuccessAt = Date.parse(status?.lastSuccessAt || '') || lastReconcileRef.current;
+      if (!shouldReconcile(Date.now(), { lastSuccessAt, staleAfterMs: 15 * 60_000 }, document.visibilityState)) return;
+    }
+    setSyncStatus(current => ({ ...current, state: 'syncing', error: '' }));
+    try {
+      const limits: Record<string, number> = { customers: 2500, technicians: 250, workOrders: 2500, sales: 2500, calendarEvents: 2500, calendarNotes: 1000, purchaseOrders: 1000, settings: 25 };
+      const results = await Promise.all(Object.entries(limits).map(([key, bootstrapLimit]) => api.cloudSyncCollection(key, { bootstrapLimit })));
+      const failure = results.find((result:any) => result?.ok === false);
+      const status = await api.cloudGetSyncStatus?.().catch(() => null);
+      if (failure) setSyncStatus({state:'error',lastSuccessAt:String(status?.lastSuccessAt||''),pending:Number(status?.pendingSync||0),error:String(failure.error||'Cloud synchronization failed')});
+      else setSyncStatus({state:'idle',lastSuccessAt:String(status?.lastSuccessAt||new Date().toISOString()),pending:Number(status?.pendingSync||0),error:''});
+      lastReconcileRef.current = Date.now();
+      await loadClientResponses();
+    } catch (error:any) {
+      setSyncStatus(current => ({ ...current, state: 'error', error: error?.message || 'Cloud synchronization failed' }));
+    }
+  }, [loadClientResponses]);
 
   useEffect(() => {
     void load();
+    void reconcileCloud(false);
     const api: any = (window as any).api;
     const onWorkOrderChanged = (record?: any) => {
       loadGenerationRef.current += 1;
-      if (record?.id != null) {
-        const key = String(record.id);
-        const terminal = (String(record.status || '').toLowerCase() === 'closed' || !!record.pickedUpAt || !!record.clientPickupDate) && !diagnosticCheckInClosureNeedsReview(record);
-        if (terminal) closedWorkOrderIdsRef.current.add(key);
-        else closedWorkOrderIdsRef.current.delete(key);
-        setData(current => ({ ...current, workOrders: terminal ? current.workOrders.filter(row => String(row.id) !== key) : upsertCommandCenterWorkOrder(current.workOrders, record) }));
+      const changedRows = Array.isArray(record) ? record : Array.isArray(record?.changedRows) ? record.changedRows : record?.id != null ? [record] : [];
+      if (changedRows.length) {
+        for (const changed of changedRows) {
+          const key = String(changed.id);
+          const terminal = (String(changed.status || '').toLowerCase() === 'closed' || !!changed.pickedUpAt || !!changed.clientPickupDate) && !diagnosticCheckInClosureNeedsReview(changed);
+          if (terminal) closedWorkOrderIdsRef.current.add(key);
+          else closedWorkOrderIdsRef.current.delete(key);
+        }
+        setData(current => ({ ...current, workOrders: changedRows.reduce((rows:any[], changed:any) => {
+          const key = String(changed.id);
+          return closedWorkOrderIdsRef.current.has(key) ? rows.filter(row => String(row.id) !== key) : upsertCommandCenterWorkOrder(rows, changed);
+        }, current.workOrders) }));
+      } else {
+        void refreshCollection('workOrders');
       }
-      void load();
     };
-    const offs = [api?.onWorkOrdersChanged?.(onWorkOrderChanged), api?.onSalesChanged?.(load), api?.onCustomersChanged?.(load), api?.onTechniciansChanged?.(load), api?.onCalendarEventsChanged?.(load), api?.onCalendarNotesChanged?.(load), api?.onPurchaseOrdersChanged?.(load)];
+    const offs = [
+      api?.onWorkOrdersChanged?.(onWorkOrderChanged),
+      api?.onSalesChanged?.(() => void refreshCollection('sales')),
+      api?.onCustomersChanged?.(() => void refreshCollection('customers')),
+      api?.onTechniciansChanged?.(() => void refreshCollection('technicians')),
+      api?.onCalendarEventsChanged?.(() => void refreshCollection('calendarEvents')),
+      api?.onCalendarNotesChanged?.(() => void refreshCollection('calendarNotes')),
+      api?.onPurchaseOrdersChanged?.(() => void refreshCollection('purchaseOrders')),
+    ];
     return () => offs.forEach(off => { try { off?.(); } catch {} });
-  }, [load]);
+  }, [load, reconcileCloud, refreshCollection]);
   useEffect(() => {
-    const channel = supabase.channel('command-center-live-records')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_responses' }, () => void load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, () => void load())
+    const channel = supabase.channel('command-center-live-client-responses')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'client_responses' }, () => void loadClientResponses())
       .subscribe();
-    // Reconcile after reconnects and when Realtime publication is unavailable.
-    const refreshVisible = () => { if (document.visibilityState === 'visible') void load(); };
-    const timer = window.setInterval(refreshVisible, 30000);
+    const refreshVisible = () => { void reconcileCloud(false); };
+    const timer = window.setInterval(refreshVisible, 15 * 60_000);
     window.addEventListener('focus', refreshVisible);
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshVisible); void supabase.removeChannel(channel); };
-  }, [load]);
+  }, [loadClientResponses, reconcileCloud]);
   useEffect(()=>subscribeWorkOrderUpdates(record=>{loadGenerationRef.current += 1;const key=String(record?.id);const terminal=(String(record?.status||'').toLowerCase()==='closed'||!!record?.pickedUpAt||!!record?.clientPickupDate)&&!diagnosticCheckInClosureNeedsReview(record);if(terminal)closedWorkOrderIdsRef.current.add(key);else closedWorkOrderIdsRef.current.delete(key);setData(current=>({...current,workOrders:terminal?current.workOrders.filter(row=>String(row.id)!==key):upsertCommandCenterWorkOrder(current.workOrders,record)}));}),[]);
 
   const model = useMemo(() => buildCommandCenterModel(data), [data]);
   const panelRecords = useMemo(() => panel ? liveCommandCenterPanelRecords(panel.title, model, panel.records || []) : [], [panel, model]);
   const responseRecord=(reply:any)=>model.workOrders.find(row=>String(row.id)===String(reply.legacy_record_id));
-  const resolveResponse=async(reply:any)=>{const key=String(reply.id);resolvedResponseIdsRef.current.add(key);persistResolvedResponseIds(resolvedResponseIdsRef.current);setClientResponses(rows=>rows.filter(row=>String(row.id)!==key));setSelectedResponse(null);const {data:updated,error}=await supabase.from('client_responses').update({resolved_at:new Date().toISOString(),unread:false}).eq('id',reply.id).select('id').maybeSingle();if(error||!updated){resolvedResponseIdsRef.current.delete(key);persistResolvedResponseIds(resolvedResponseIdsRef.current);window.alert(error?.message||'The reply could not be marked resolved.');await load();}};
-  const unresolveResponse=async(reply:any)=>{resolvedResponseIdsRef.current.delete(String(reply.id));persistResolvedResponseIds(resolvedResponseIdsRef.current);const {error}=await supabase.from('client_responses').update({resolved_at:null,unread:true}).eq('id',reply.id);if(error)window.alert(error.message);await load();};
-  const acknowledgeResponse=async(reply:any)=>{const action=reply.response_type==='approved'?'approval_received':reply.response_type==='declined'?'repair_declined':'';if(action){const {error}=await supabase.functions.invoke('client-updates',{body:{recordType:'repair',recordId:Number(reply.legacy_record_id),statusKey:action,notes:`Client response acknowledged: ${reply.message||reply.response_type}`,deliveryMode:'email',idempotencyKey:`client-response:${reply.id}:acknowledge`}});if(error)throw error;}await supabase.from('client_responses').update({acknowledged_at:new Date().toISOString(),unread:false}).eq('id',reply.id);await load();};
+  const resolveResponse=async(reply:any)=>{const key=String(reply.id);resolvedResponseIdsRef.current.add(key);persistResolvedResponseIds(resolvedResponseIdsRef.current);setClientResponses(rows=>rows.filter(row=>String(row.id)!==key));setSelectedResponse(null);const {data:updated,error}=await supabase.from('client_responses').update({resolved_at:new Date().toISOString(),unread:false}).eq('id',reply.id).select('id').maybeSingle();if(error||!updated){resolvedResponseIdsRef.current.delete(key);persistResolvedResponseIds(resolvedResponseIdsRef.current);window.alert(error?.message||'The reply could not be marked resolved.');await loadClientResponses();}};
+  const unresolveResponse=async(reply:any)=>{resolvedResponseIdsRef.current.delete(String(reply.id));persistResolvedResponseIds(resolvedResponseIdsRef.current);const {error}=await supabase.from('client_responses').update({resolved_at:null,unread:true}).eq('id',reply.id);if(error)window.alert(error.message);await loadClientResponses();};
+  const acknowledgeResponse=async(reply:any)=>{const action=reply.response_type==='approved'?'approval_received':reply.response_type==='declined'?'repair_declined':'';if(action){const {error}=await supabase.functions.invoke('client-updates',{body:{recordType:'repair',recordId:Number(reply.legacy_record_id),statusKey:action,notes:`Client response acknowledged: ${reply.message||reply.response_type}`,deliveryMode:'email',idempotencyKey:`client-response:${reply.id}:acknowledge`}});if(error)throw error;}await supabase.from('client_responses').update({acknowledged_at:new Date().toISOString(),unread:false}).eq('id',reply.id);await loadClientResponses();};
   const sendReply=async()=>{if(!selectedResponse||!staffReply.trim())return;setReplyBusy(true);try{const {data:sent,error}=await supabase.functions.invoke('client-updates',{body:{recordType:'repair',recordId:Number(selectedResponse.legacy_record_id),statusKey:'manual_update',notes:staffReply.trim(),deliveryMode:'email'}});if(error||!sent?.ok)throw error||new Error(sent?.error||'Reply failed');await supabase.from('client_responses').insert({shop_id:selectedResponse.shop_id,work_order_id:selectedResponse.work_order_id,legacy_record_id:selectedResponse.legacy_record_id,customer_id:selectedResponse.customer_id,response_type:'staff_reply',message:staffReply.trim(),unread:false,resolved_at:new Date().toISOString(),delivery_status:sent.deliveryStatus||'sent'});setStaffReply('');await resolveResponse(selectedResponse);}catch(error:any){window.alert(error?.message||'Reply could not be sent.');}finally{setReplyBusy(false)}};
   const searchResults = useMemo(() => searchCommandCenterRecords(model, props.keyword), [model, props.keyword]);
   const openRecord = async (record: CommandCenterRecord) => {
@@ -139,7 +199,7 @@ export default function CommandCenter(props: Props) {
   };
   const showRecords = (title: string, records: CommandCenterRecord[]) => setPanel({ title, records });
   const showToday = (title: string, records: any[]) => setPanel({ title: `Today · ${title}`, records, kind: 'today' } as any);
-  const refreshCommandCenter = async () => { setLoading(true); await load(); };
+  const refreshCommandCenter = async () => { setLoading(true); try { await reconcileCloud(true); } finally { setLoading(false); } };
   const markProductsDelivered = async (record: CommandCenterRecord, selectedIndexes?: number[], notifyClient = false) => {
     const indexes = selectedIndexes || record.productDelivery?.itemIndexes || [];
     if (!indexes.length || deliveryBusy) return;
@@ -157,7 +217,6 @@ export default function CommandCenter(props: Props) {
       const updated = {...record.source,items,status:remainingIndexes.length?'Partially Delivered':'Product Arrived',statusUpdate:remainingIndexes.length?'Some Products Delivered':'All Products Delivered',statusUpdatedAt:deliveredAt,updatedAt:deliveredAt};
       setData(current=>({...current,sales:current.sales.map((sale:any)=>String(sale.id)===String(record.id)?updated:sale)}));
       await (window as any).api?.dbUpdate?.('sales',record.id,updated);
-      await load();
     } catch(error:any) {
       window.alert(error?.message||'The delivered products could not be saved.');
     } finally { setDeliveryBusy(''); }
@@ -234,7 +293,7 @@ export default function CommandCenter(props: Props) {
           if (!saved) return window.alert('The ticket could not be restored. No payment has been changed.');
           closedWorkOrderIdsRef.current.delete(String(source.id));
           setData(current => ({ ...current, workOrders: upsertCommandCenterWorkOrder(current.workOrders, saved) }));
-          await load();
+          await refreshCollection('workOrders');
         } } as ContextMenuItem] : []),
         { label: 'Close Work Order', onClick: async () => {
           const source = data.workOrders.find((record: any) => String(record.id) === String(menuRecord.id));
@@ -249,15 +308,15 @@ export default function CommandCenter(props: Props) {
             closedWorkOrderIdsRef.current.delete(closedKey);
             window.alert('The work order could not be closed. It has been restored so it is not lost.');
           }
-          await load();
+          await refreshCollection('workOrders');
         } } as ContextMenuItem,
         { label: 'Print Customer Receipt', onClick: async () => { await api?.openCustomerReceipt?.({ workOrderId: menuRecord.id }); } } as ContextMenuItem,
         { label: 'Print Release Form', onClick: async () => { await api?.openReleaseForm?.({ workOrderId: menuRecord.id }); } } as ContextMenuItem,
       ] : []),
       { type: 'separator' },
-      { label: 'Delete…', danger: true, onClick: async () => { if (window.confirm(`Delete ${invoice}? This cannot be undone.`)) { await api?.dbDelete?.(isWorkOrder ? 'workOrders' : 'sales', menuRecord.id); setPanel(current => current?.records ? { ...current, records: removeCommandCenterRecord(current.records, menuRecord) } : current); await load(); } } },
+      { label: 'Delete…', danger: true, onClick: async () => { if (window.confirm(`Delete ${invoice}? This cannot be undone.`)) { await api?.dbDelete?.(isWorkOrder ? 'workOrders' : 'sales', menuRecord.id); setPanel(current => current?.records ? { ...current, records: removeCommandCenterRecord(current.records, menuRecord) } : current); await refreshCollection(isWorkOrder ? 'workOrders' : 'sales'); } } },
     ];
-  }, [data.workOrders, load, menuRecord]);
+  }, [data.workOrders, menuRecord, refreshCollection]);
   const menuDelivery = deliveryMenu.state.data;
   const deliveryMenuItems = useMemo<ContextMenuItem[]>(() => {
     if (!menuDelivery) return [];
@@ -307,7 +366,7 @@ export default function CommandCenter(props: Props) {
     <div className="command-center-heading">
       <div className="command-center-title"><h1>Command Center</h1><span>{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</span></div>
       <div className="command-center-agenda-strip" aria-label="Today's calendar overview">{(['Tasks','Events','Notes','Consultations'] as const).map(label=><button key={label} onClick={()=>showToday(label,todayRows[label])}><span>{label}</span><strong>{todayRows[label].length}</strong></button>)}</div>
-      <div className="command-center-heading-actions"><button onClick={() => setPanel({title:'Repair Statistics',kind:'statistics'})}>Repair Statistics</button><button disabled={loading} onClick={() => void refreshCommandCenter()}>{loading?'Refreshing…':'Refresh'}</button></div>
+      <div className="command-center-heading-actions"><span className={`command-center-sync ${syncStatus.state}`} title={syncStatus.error || `${syncStatus.pending} pending changes`}>{syncStatus.state==='syncing'?'Syncing…':syncStatus.state==='error'?'Sync issue':syncStatus.lastSuccessAt?`Synced ${new Date(syncStatus.lastSuccessAt).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`:'Cached data'}</span><button onClick={() => setPanel({title:'Repair Statistics',kind:'statistics'})}>Repair Statistics</button><button disabled={loading||syncStatus.state==='syncing'} onClick={() => void refreshCommandCenter()}>{loading||syncStatus.state==='syncing'?'Refreshing…':'Refresh'}</button></div>
     </div>
     {loading ? <div className="command-center-loading">Loading current shop activity…</div> : null}
     {props.keyword.trim() ? <div className="command-center-search-results"><header><strong>Search results</strong><span>{searchResults.length} matches · Command Center remains open</span></header>{searchResults.length ? searchResults.map(record => <button key={`${record.kind}-${record.id}`} onClick={() => activateRecord(record)} onContextMenu={event => openRecordMenu(event, record)} {...longPressHandlers(record)}><strong>{record.customerName}</strong><span>{recordLabel(record)}</span><em>{record.kind === 'workorder' ? `WO #${record.id}` : `Invoice #${record.id}`}</em></button>) : <p>No matching clients, work orders, sales, consultations, devices, or invoices.</p>}</div> : null}

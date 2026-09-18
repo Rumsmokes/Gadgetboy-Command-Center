@@ -4337,8 +4337,14 @@ ipcMain.handle('cloud:clearSession', async () => {
 ipcMain.handle('cloud:collectionChanged', async (_e: any, key: string) => {
   const collection = String(key || '').trim();
   if (!CLOUD_TABLE_BY_KEY[collection]) return { ok: false, error: 'Unknown cloud collection.' };
-  scheduleCollectionChanged(collection);
-  return { ok: true };
+  try {
+    // A realtime notification only tells us that cloud state changed. Refresh the
+    // durable local cache before notifying renderers so they never reread stale
+    // rows and resurrect a ticket that another device just closed or moved.
+    return await synchronizeDesktopCollection(collection);
+  } catch (error: any) {
+    return { ok: false, error: error?.message || String(error) };
+  }
 });
 
 function normalizeCloudId(row: any): number | string | null {
@@ -5437,7 +5443,8 @@ async function synchronizeDesktopCollection(key: string, options: { bootstrapLim
       lastError: '',
       collections: { ...cloudSyncState.collections, [key]: collectionStatus },
     });
-    for (const row of result.changedRows) scheduleCollectionChanged(key, row);
+    if (result.changedRows.length === 1) scheduleCollectionChanged(key, result.changedRows[0]);
+    else if (result.changedRows.length > 1) scheduleCollectionChanged(key, { changedRows: result.changedRows });
     return { ok: true, key, ...collectionStatus, changedRows: result.changedRows, pendingSync: readCloudSyncQueue().length };
   } catch (error: any) {
     const message = error?.message || String(error);
