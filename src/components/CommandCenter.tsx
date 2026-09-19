@@ -288,11 +288,11 @@ export default function CommandCenter(props: Props) {
     if (!fields.length) { void submitMove(record, key, defaults); return; }
     setMoveValue(defaults); setMoveError(''); setMoveDialog({ record, key, label });
   };
-  const submitMove = async (record: CommandCenterRecord, key: CommandCenterMoveKey, value: CommandCenterMoveValue) => {
+  const submitMove = async (record: CommandCenterRecord, key: CommandCenterMoveKey, value: CommandCenterMoveValue, deliveryMode: 'email' | 'internal' = 'email') => {
     if (moveBusy) return;
     setMoveBusy(true); setMoveError('');
     try {
-      const request = buildCommandCenterMoveRequest(record.source, key, value, `${record.id}:${key}:${crypto.randomUUID()}`);
+      const request = { ...buildCommandCenterMoveRequest(record.source, key, value, `${record.id}:${key}:${crypto.randomUUID()}`), deliveryMode };
       const { data: delivery, error } = await supabase.functions.invoke('client-updates', { body: request });
       if (error || !delivery?.ok || !delivery?.statusSaved || !delivery?.record) throw new Error(String((error as any)?.context?.body?.error || delivery?.error || error?.message || 'The workflow update could not be saved and sent.'));
       const mapped = mapCloudRow('repair', delivery.record);

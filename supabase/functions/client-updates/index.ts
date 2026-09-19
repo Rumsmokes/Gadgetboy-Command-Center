@@ -309,7 +309,7 @@ Deno.serve(async (req: Request) => {
 
     const details = customerDetails(type, record, customer, legacyRecordId);
     const requestedDelivery = safeString(body.deliveryMode, 20).toLowerCase();
-    const deliveryMode = statusKey === "technician_progress" ? "internal" : requestedDelivery === "text" ? "text" : "email";
+    const deliveryMode = statusKey === "technician_progress" || requestedDelivery === "internal" ? "internal" : requestedDelivery === "text" ? "text" : "email";
     if (deliveryMode === "email" && !details.email) throw httpError(400, "The client does not have an email address on file.");
     if (deliveryMode === "text" && !details.phone) throw httpError(400, "The client does not have a phone number on file.");
 
