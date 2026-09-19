@@ -4,7 +4,7 @@
 
 Needs Attention is the POS's audit desk. It must make exceptions visible before they become reporting, inventory, client-communication, or record-integrity mistakes. It does not silently change a ticket. Each alert identifies the affected record, explains why it was flagged, shows its operational context, and opens the exact corrective workflow.
 
-This applies to records created on or after September 1, 2026. Older records remain available in All Invoices and reporting, but do not create historical noise in the audit desk unless they are already actively being worked.
+This applies only to invoices created on or after September 1, 2026. Older invoices remain available in All Invoices and reporting, but are excluded from Needs Attention even when they are open, incomplete, or actively being worked. The audit desk never creates historical noise from pre-cutoff records.
 
 ## Data and alert model
 
