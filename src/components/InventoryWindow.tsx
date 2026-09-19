@@ -180,6 +180,7 @@ export default function InventoryWindow() {
   const [expandedDeviceCategories, setExpandedDeviceCategories] = useState<Set<string>>(() => new Set());
   const [editing, setEditing] = useState<InventoryItem>(() => blankItem('parts'));
   const [editingOrderUrl, setEditingOrderUrl] = useState(false);
+  const [acquisitionSource, setAcquisitionSource] = useState<'online' | 'local'>('local');
   const [saving, setSaving] = useState(false);
   const [scrapingUrl, setScrapingUrl] = useState(false);
   const [showCartAdder, setShowCartAdder] = useState(false);
@@ -241,6 +242,7 @@ export default function InventoryWindow() {
         setSelectedId(INVENTORY_PREVIEW_PARENT.id);
         setEditing({ ...blankItem('parts'), ...INVENTORY_PREVIEW_PARENT });
         setEditingOrderUrl(false);
+        setAcquisitionSource('local');
         return;
       }
       await reconcilePaidSaleInventory(api).catch((error) => {
@@ -422,6 +424,7 @@ export default function InventoryWindow() {
     setSelectedId(item.id);
     setEditing({ ...blankItem(mode), ...item, associatedDevices, markupPct: item.markupPct ?? DEFAULT_MARKUP_PCT });
     setEditingOrderUrl(!item.reorderUrlTemplate);
+    setAcquisitionSource(String(item.reorderUrlTemplate || '').trim() ? 'online' : 'local');
     lastScrapedUrlRef.current = String(item.reorderUrlTemplate || '');
     const quantity = Math.max(1, Math.round(Number(item.reorderQty || 1)));
     const unitCost = Number(item.internalCost);
@@ -437,6 +440,7 @@ export default function InventoryWindow() {
     setSelectedId(undefined);
     setEditing(applyInventoryDefaults(blankItem(mode), inventoryDefaults));
     setEditingOrderUrl(false);
+    setAcquisitionSource('local');
     lastScrapedUrlRef.current = '';
     setShowCartAdder(false);
     setCartMessage('');
@@ -449,6 +453,7 @@ export default function InventoryWindow() {
     setSelectedId(undefined);
     setEditing({ ...blankItem('parts'), isParentPart: true, trackStock: false, stockCount: undefined, lowStockThreshold: undefined });
     setEditingOrderUrl(false);
+    setAcquisitionSource('local');
   };
 
   const startVariant = (parent: InventoryItem) => {
@@ -467,6 +472,8 @@ export default function InventoryWindow() {
       isParentPart: false,
       variantAttributes: {},
     });
+    setEditingOrderUrl(false);
+    setAcquisitionSource('local');
   };
 
   const duplicateVariant = () => {
@@ -482,12 +489,16 @@ export default function InventoryWindow() {
       updatedAt: undefined,
       variantAttributes: { ...inventoryVariantAttributes(editing) },
     });
+    setEditingOrderUrl(false);
+    setAcquisitionSource(String(editing.reorderUrlTemplate || '').trim() ? 'online' : 'local');
   };
 
   const duplicateVariantItem = (item: InventoryItem) => {
     setMode((item.itemType || 'Product') === 'Part' ? 'parts' : 'products');
     setSelectedId(undefined);
     setEditing({ ...blankItem((item.itemType || 'Product') === 'Part' ? 'parts' : 'products'), ...duplicateInventoryVariant(item), purchaseRestockKeys: [], variantAttributes: { ...inventoryVariantAttributes(item) } });
+    setEditingOrderUrl(false);
+    setAcquisitionSource(String(item.reorderUrlTemplate || '').trim() ? 'online' : 'local');
   };
 
   const ensureVendor = async (nameValue: string) => {
@@ -521,6 +532,10 @@ export default function InventoryWindow() {
     }
     if (!String(editing.category || '').trim()) {
       alert(mode === 'parts' ? 'Device Category is required for repair parts.' : 'Product Type is required.');
+      return;
+    }
+    if (acquisitionSource === 'online' && !normalizeOrderUrl(editing.reorderUrlTemplate)) {
+      alert('An Order URL is required for inventory marked Ordered Online.');
       return;
     }
     setSaving(true);
@@ -585,6 +600,7 @@ export default function InventoryWindow() {
       setSelectedId(merged.id);
       setEditing(merged);
       setEditingOrderUrl(!merged.reorderUrlTemplate);
+      setAcquisitionSource(String(merged.reorderUrlTemplate || '').trim() ? 'online' : 'local');
     } catch (err) {
       console.error('Inventory save failed', err);
       alert('Inventory item could not be saved.');
@@ -654,6 +670,8 @@ export default function InventoryWindow() {
     const url = fillInventoryReorderUrl(template, item);
     try { await api?.openUrl?.(url); } catch { window.open(url, '_blank', 'noopener,noreferrer'); }
   };
+
+  const isOrderedOnline = acquisitionSource === 'online';
 
   const beginAddToCart = () => {
     const quantity = inventoryReorderQuantity(editing);
@@ -920,7 +938,12 @@ export default function InventoryWindow() {
                 </div> : null}
               </div> : null}
               <div className="block md:col-span-2">
-                <span className="mb-1 block text-xs text-zinc-400">Order URL {scrapingUrl && <span className="text-[#39FF14]">· Looking up details…</span>}</span>
+                <span className="mb-2 block text-xs text-zinc-400">Acquisition source</span>
+                <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2" role="group" aria-label="Inventory acquisition source">
+                  <button type="button" aria-pressed={isOrderedOnline} onClick={() => { setAcquisitionSource('online'); setEditingOrderUrl(true); }} className={`rounded-lg border px-3 py-2.5 text-left text-sm font-semibold ${isOrderedOnline ? 'border-violet-400 bg-violet-950/50 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500'}`}>Ordered Online</button>
+                  <button type="button" aria-pressed={!isOrderedOnline} onClick={() => { setAcquisitionSource('local'); setEditing((current) => ({ ...current, reorderUrlTemplate: '' })); setEditingOrderUrl(false); lastScrapedUrlRef.current = ''; }} className={`rounded-lg border px-3 py-2.5 text-left text-sm font-semibold ${!isOrderedOnline ? 'border-violet-400 bg-violet-950/50 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500'}`}>Locally Acquired</button>
+                </div>
+                {isOrderedOnline ? <><span className="mb-1 block text-xs text-zinc-400">Order URL {scrapingUrl && <span className="text-[#39FF14]">· Looking up details…</span>}</span>
                 {editing.reorderUrlTemplate && !editingOrderUrl ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <button type="button" onClick={() => openReorder(editing)} className="rounded border border-red-500 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">Order URL</button>
@@ -937,7 +960,7 @@ export default function InventoryWindow() {
                     className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-[#39FF14]"
                     placeholder="Paste the distributor product URL"
                   />
-                )}
+                )}</> : <p className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-500">No order URL is needed for locally acquired inventory.</p>}
                 {selectedId && String(editing.distributor || '').trim() && Number(editing.internalCost) > 0 && String(editing.condition || '').toLowerCase() !== 'used' ? (
                   <div className="mt-3 rounded border border-zinc-700 bg-zinc-900/80 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
