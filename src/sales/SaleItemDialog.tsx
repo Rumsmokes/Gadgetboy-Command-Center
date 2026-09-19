@@ -15,7 +15,7 @@ export default function SaleItemDialog({ item, onClose, onSave }: { item: SaleIt
   async function save() {
     if (!String(draft.description || '').trim() || !String(draft.category || '').trim() || !(Number(draft.qty) > 0)) { setError('Product name, category, and quantity are required.'); return; }
     if (source === 'local' && (!String(draft.localStore || '').trim() || !Number.isFinite(Number(draft.internalCost)) || !String(draft.receiptReference || '').trim() || !(Number(draft.quantityAcquired) > 0))) { setError('Local store, unit cost, receipt reference, and quantity acquired are required.'); return; }
-    if (source === 'order' && (!String(draft.distributor || '').trim() || !Number.isFinite(Number(draft.internalCost)) || !String(draft.productUrl || '').trim() || !draft.orderDate || !draft.estimatedDeliveryDate)) { setError('Supplier, unit cost, order URL, order date, and estimated arrival are required.'); return; }
+    if (source === 'order' && (!String(draft.distributor || '').trim() || !Number.isFinite(Number(draft.internalCost)) || !String(draft.productUrl || '').trim())) { setError('Supplier, unit cost, and order URL are required. Order date and ETA are set when EOD checkout places the order.'); return; }
     try {
       await onSave({ ...draft, sourceKind: source, inStock: source === 'local', requiresOrder: source === 'order', orderStatus: source === 'order' ? (draft.orderStatus || 'needed') : 'in_stock' });
     } catch (saveError: any) { setError(saveError?.message || 'The sale item could not be saved.'); }
