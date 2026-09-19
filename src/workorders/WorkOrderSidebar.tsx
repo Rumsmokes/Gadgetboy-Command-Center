@@ -43,21 +43,26 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
     const matchByLabel = techs.find((t: any) => (t.nickname?.trim() || t.firstName) === raw);
     return matchByLabel ? String(matchByLabel.id) : '';
   }, [techs, workOrder.assignedTo]);
+  const formatTimestamp = (value: any) => {
+    if (!value) return 'Not recorded';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  };
+  const checkInAt = (workOrder as any).checkInAt || (workOrder as any).createdAt;
+  const lastUpdateAt = (workOrder as any).lastClientUpdateAt || (workOrder as any).lastStatusUpdateAt || (workOrder as any).updatedAt;
+  const lastUpdateLabel = (workOrder as any).lastClientUpdateLabel || (workOrder as any).lastStatusUpdateLabel || (workOrder as any).lastUpdateLabel || 'No client or technician update recorded';
+  const balance = Number((workOrder as any).totals?.remaining || 0) || 0;
 
   return (
     <div className="gb-wo-side-actions bg-gradient-to-b from-slate-800 to-slate-900 p-3 rounded border border-zinc-700 h-full flex flex-col">
       {headerControl ? <div className="gb-wo-sidebar-header">{headerControl}</div> : null}
-      {(!hideStatus || !hideAssigned || !hideDates) && <h4 className="text-sm font-semibold text-zinc-200 mb-3">Status & Dates</h4>}
-      {!hideStatus && (
-        <>
-          <label className="block text-xs text-zinc-400">Status</label>
-          <select className="w-full mt-1 mb-2 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand" value={workOrder.status} onChange={e => onChange({ status: e.target.value as WorkOrderStatus })}>
-            <option value="open">open</option>
-            <option value="in progress">in progress</option>
-            <option value="closed">closed</option>
-          </select>
-        </>
-      )}
+      <h4 className="text-sm font-semibold text-zinc-200 mb-3">Ticket summary</h4>
+      <div className="mb-4 space-y-2 rounded-lg border border-zinc-700 bg-zinc-950/40 p-3 text-xs">
+        <div className="flex items-center justify-between gap-2"><span className="text-zinc-400">{saleDates ? 'Sale created' : 'Checked in'}</span><strong className="text-right text-zinc-100">{formatTimestamp(checkInAt)}</strong></div>
+        <div className="flex items-center justify-between gap-2"><span className="text-zinc-400">Status</span><strong className="rounded-full border border-violet-400/40 bg-violet-950/40 px-2 py-0.5 text-violet-100">{String(workOrder.status || 'open')}</strong></div>
+        <div className="border-t border-zinc-800 pt-2"><span className="text-zinc-400">Last update</span><strong className="mt-1 block truncate text-zinc-100" title={String(lastUpdateLabel)}>{lastUpdateLabel}</strong><span className="mt-0.5 block text-zinc-500">{formatTimestamp(lastUpdateAt)}</span></div>
+        <div className="flex items-center justify-between gap-2 border-t border-zinc-800 pt-2"><span className="text-zinc-400">Balance</span><strong className={balance > 0 ? 'text-[#39ff14]' : 'text-zinc-200'}>${balance.toFixed(2)}</strong></div>
+      </div>
       {!hideAssigned && (
         <>
           <label className="block text-xs text-zinc-400">
@@ -86,44 +91,6 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
           )}
         </>
       )}
-
-
-      {!hideDates && (
-        <>
-          {/* Hide ordered/delivered when requested in Sales, but keep Client pickup */}
-          {!saleDates || !hideOrderDeliveryDates ? (
-            <>
-              <label className="block text-xs text-zinc-400">{saleDates ? 'Product ordered' : 'Repair complete'}</label>
-              <div className="flex gap-2 mb-2">
-                <input type="datetime-local" className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={toLocalDatetimeInput(workOrder.repairCompletionDate)} onChange={e => onChange({ repairCompletionDate: fromLocalDatetimeInput(e.target.value) as any })} />
-                <button className="px-2 py-1 bg-brand text-black rounded" onClick={() => onChange({ repairCompletionDate: new Date().toISOString() })}>Now</button>
-              </div>
-
-              <label className="block text-xs text-zinc-400">{saleDates ? 'Product delivered' : 'Check-out'}</label>
-              <div className="flex gap-2 mb-2">
-                <input type="datetime-local" className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={toLocalDatetimeInput(workOrder.checkoutDate)} onChange={e => onChange({ checkoutDate: fromLocalDatetimeInput(e.target.value) as any })} />
-                <button className="px-2 py-1 bg-brand text-black rounded" onClick={() => onChange({ checkoutDate: new Date().toISOString() })}>Now</button>
-              </div>
-            </>
-          ) : null}
-
-          {saleDates && (
-            <>
-              <label className="block text-xs text-zinc-400">Client pickup</label>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="datetime-local"
-                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                  value={toLocalDatetimeInput((workOrder as any).clientPickupDate)}
-                  onChange={e => onChange({ ...( { } as any), clientPickupDate: fromLocalDatetimeInput(e.target.value) as any })}
-                />
-                <button className="px-2 py-1 bg-brand text-black rounded" onClick={() => onChange({ ...( { } as any), clientPickupDate: new Date().toISOString() as any })}>Now</button>
-              </div>
-            </>
-          )}
-        </>
-      )}
-
       <div className="mt-auto pb-16">
         {renderActions ? (
           <>{renderActions(workOrder)}</>

@@ -13,6 +13,7 @@ import ClientUpdatePanel from '@/workorders/ClientUpdatePanel';
 import { consumeInStockInventory } from '@/lib/inventoryConsumption';
 import { consultationDigest } from '@/lib/automaticClientEmail';
 import { consultationEmailDetails, queueConsultationEmail, queueInitialPaymentAcknowledgment } from '@/lib/automaticEmailQueue';
+import { listTechnicians } from '@/lib/admin';
 
 type SalePayload = {
   customerId?: number;
@@ -57,6 +58,64 @@ type SaleRecord = {
   internalCost?: number; // deprecated: moved per-item; kept for old records
   condition?: 'New' | 'Excellent' | 'Good' | 'Fair'; // deprecated: moved per-item
   consultationHours?: number; // legacy mirror of first consultation item
+};
+
+/** Kept in the main form so every sale has the same clear ownership control as a work order. */
+const SaleTechnicianField: React.FC<{
+  value?: string | null;
+  invalid?: boolean;
+  onChange: (assignedTo: string | null) => void;
+}> = ({ value, invalid = false, onChange }) => {
+  const [techs, setTechs] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        const technicians = await listTechnicians();
+        if (mounted) setTechs(Array.isArray(technicians) ? technicians : []);
+      } catch {
+        if (mounted) setTechs([]);
+      }
+    };
+    void refresh();
+    const off = (window as any).api?.onTechniciansChanged?.(() => void refresh());
+    return () => { mounted = false; try { off?.(); } catch {} };
+  }, []);
+
+  const selectedTechId = useMemo(() => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (techs.some((tech) => String(tech.id) === raw)) return raw;
+    const namedMatch = techs.find((tech) => String(tech.nickname?.trim() || tech.firstName || '') === raw);
+    return namedMatch ? String(namedMatch.id) : '';
+  }, [techs, value]);
+
+  return (
+    <section className="gb-wo-top-card rounded-lg border border-zinc-700 bg-zinc-900/70 px-3 py-2">
+      <label className="block text-xs text-zinc-400">
+        Assigned to
+        {invalid ? <span className="ml-1 text-red-500">*</span> : null}
+      </label>
+      <div className="mt-1 flex items-center gap-2">
+        <AssignedTechnicianAvatar assignedTo={value} />
+        {techs.length === 0 ? (
+          <select disabled className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-zinc-500">
+            <option>No technicians</option>
+          </select>
+        ) : (
+          <select
+            className={`min-w-0 flex-1 rounded border bg-zinc-800 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-brand ${invalid ? 'border-red-500' : 'border-zinc-700'}`}
+            value={selectedTechId}
+            onChange={(event) => onChange(event.target.value || null)}
+          >
+            <option value="">Unassigned</option>
+            {techs.map((tech) => <option key={tech.id} value={String(tech.id)}>{tech.nickname?.trim() || tech.firstName}</option>)}
+          </select>
+        )}
+      </div>
+    </section>
+  );
 };
 
 const CONSULTATION_BASE_RATE = 75;    // covers first hour + at-home travel within range
@@ -1275,6 +1334,27 @@ const SaleWindow: React.FC = () => {
         } else {
           setSale(s => ({ ...s, id: currentId, ...recordToPersist }));
         }
+        const initialSaleCheckoutForm = !!currentId && additionalPaid > 0 && prevPayments.length === 0 && !((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation');
+        if (initialSaleCheckoutForm) {
+          try {
+            const formItems = (Array.isArray(recordToPersist.items) ? recordToPersist.items : []).map((row: any) => ({ description: row.description || 'Sale item', qty: itemUnits(row) || 1, price: Number(row.price) || 0, discountType: row.discountType, discountValue: row.discountValue }));
+            await printSaleReleaseForm({
+              invoiceId: String((saved as any)?.invoiceId || currentId),
+              id: Number(currentId),
+              dateTimeISO: recordToPersist.checkInAt || new Date().toISOString(),
+              clientName: recordToPersist.customerName || '',
+              phone: recordToPersist.customerPhone || '',
+              email: String((recordToPersist as any).customerEmail || ''),
+              items: formItems,
+              subTotal: Number(updatedTotals.subTotal || 0),
+              discount: Number(recordToPersist.discount || 0),
+              taxRate: Number(recordToPersist.taxRate || 0),
+              taxes: Number(updatedTotals.tax || 0),
+              amountPaid: Number(newAmountPaid || 0),
+              notes: String((recordToPersist as any).notes || ''),
+            });
+          } catch (formError) { console.warn('Initial sale form could not be printed.', formError); }
+        }
         if (saved && currentId && additionalPaid > 0) {
           try {
             const customerRows = recordToPersist.customerId && (window as any).api?.findCustomers
@@ -1560,6 +1640,7 @@ const SaleWindow: React.FC = () => {
       workOrder={sharedWorkOrder}
       onChange={handleSidebarChange}
       hideStatus
+      hideAssigned
       saleDates
       hideOrderDeliveryDates
       validationFlags={sidebarValidationFlags}
@@ -1567,6 +1648,11 @@ const SaleWindow: React.FC = () => {
     />
   <div className="gb-sale-main flex flex-col gap-2 col-span-1 pb-16 min-h-0 overflow-auto">
           <h1 className="text-xl font-semibold mb-2">New Sale</h1>
+          <SaleTechnicianField
+            value={sale.assignedTo}
+            invalid={!!sidebarValidationFlags?.assignedTo}
+            onChange={(assignedTo) => setSale((current) => ({ ...current, assignedTo }))}
+          />
 
           {/* ── Consultation Details Panel ──────────────────────── */}
           {((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') && (
@@ -1632,15 +1718,6 @@ const SaleWindow: React.FC = () => {
                     <option value="instore">In-Store</option>
                     <option value="athome">At-Home / On-Site</option>
                   </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Assigned Technician</label>
-                  <div className="flex items-center gap-2"><AssignedTechnicianAvatar assignedTo={sale.assignedTo} /><input
-                    className="min-w-0 flex-1 bg-zinc-900 border border-zinc-600 rounded px-2 py-1.5 text-sm focus:border-yellow-400 focus:outline-none"
-                    value={sale.assignedTo || ''}
-                    onChange={e => setSale(s => ({ ...s, assignedTo: e.target.value }))}
-                    placeholder="Technician name"
-                  /></div>
                 </div>
               </div>
 
@@ -1825,60 +1902,14 @@ const SaleWindow: React.FC = () => {
               showRequiredIndicator={itemsSectionNeedsAttention}
             />
 
-
-            {/* Ordering belongs to product sales, never consultation billing. */}
-            {!((sale as any).consultationType || String((sale as any).category || '').toLowerCase() === 'consultation') ? <>
-            <div className="col-span-2 grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-zinc-400 mb-1">Ordered date</label>
-                <input
-                  type="date"
-                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
-                  value={sale.orderedDate || ''}
-                  disabled={!!sale.inStock}
-                  onChange={e => setSale(s => ({ ...s, orderedDate: e.target.value || null }))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-zinc-400 mb-1">Estimated delivery</label>
-                <input
-                  type="date"
-                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
-                  value={sale.estimatedDeliveryDate || ''}
-                  disabled={!!sale.inStock}
-                  onChange={e => setSale(s => ({ ...s, estimatedDeliveryDate: e.target.value || null }))}
-                />
-              </div>
-            </div>
-
-            {/* Parts URLs */}
-            <div className="col-span-2 grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-zinc-400 mb-1">Part ordered URL</label>
-                {(sale as any).partsOrderUrl ? <button type="button" className="mb-2 rounded border border-[#39FF14]/60 bg-[#39FF14]/10 px-3 py-1.5 text-xs font-semibold text-[#39FF14]" onClick={() => { const url = String((sale as any).partsOrderUrl); if ((window as any).api?.openUrl) void (window as any).api.openUrl(url); else if ((window as any).api?.openExternal) void (window as any).api.openExternal(url); else window.open(url, '_blank', 'noopener,noreferrer'); }}>Open Part URL</button> : null}
-                <input
-                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
-                  placeholder="https://..."
-                  value={(sale as any).partsOrderUrl || ''}
-                  disabled={!!sale.inStock}
-                  onChange={e => setSale(s => ({ ...s, partsOrderUrl: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-zinc-400 mb-1">Tracking URL</label>
-                {(sale as any).partsTrackingUrl ? <button type="button" className="mb-2 rounded border border-sky-400/60 bg-sky-400/10 px-3 py-1.5 text-xs font-semibold text-sky-200" onClick={() => { const url = String((sale as any).partsTrackingUrl); if ((window as any).api?.openUrl) void (window as any).api.openUrl(url); else if ((window as any).api?.openExternal) void (window as any).api.openExternal(url); else window.open(url, '_blank', 'noopener,noreferrer'); }}>Open Tracking URL</button> : null}
-                <input
-                  className={`w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1 ${sale.inStock ? 'opacity-50 pointer-events-none' : ''}`}
-                  placeholder="https://..."
-                  value={(sale as any).partsTrackingUrl || ''}
-                  disabled={!!sale.inStock}
-                  onChange={e => setSale(s => ({ ...s, partsTrackingUrl: e.target.value }))}
-                />
-                {(sale as any).partsTrackingNumber ? <div className="mt-2 text-xs text-zinc-400">Tracking number: <span className="text-zinc-200">{(sale as any).partsTrackingNumber}</span></div> : null}
-                {(sale as any).partsTrackingUnavailable ? <div className="mt-2 text-xs text-zinc-400">Distributor did not provide tracking.</div> : null}
-              </div>
-            </div>
-            </> : null}
+            {(() => {
+              const orderedItems = ((sale.items || []) as SaleItemRow[]).filter(item => item.requiresOrder || item.sourceKind === 'order' || item.orderStatus === 'ordered' || item.orderStatus === 'needed');
+              if (!orderedItems.length) return null;
+              return <section className="col-span-2 rounded-xl border border-violet-500/35 bg-violet-950/20 p-3">
+                <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold text-violet-100">Delivery overview</h3><span className="text-xs text-violet-200">From ordered sale items</span></div>
+                <div className="space-y-2">{orderedItems.map(item => <div key={item.id} className="grid gap-2 rounded-lg border border-zinc-700 bg-zinc-950/50 px-3 py-2 text-xs sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"><strong className="truncate text-zinc-100">{item.description || 'Ordered product'}</strong><span className="text-zinc-400">Ordered: {item.orderDate || 'Not recorded'}</span><span className="text-zinc-400">ETA: {item.estimatedDeliveryDate || 'Not recorded'}</span></div>)}</div>
+              </section>;
+            })()}
           <div className="col-span-2">
             <label className="block text-sm text-zinc-400 mb-1">Notes</label>
             <textarea

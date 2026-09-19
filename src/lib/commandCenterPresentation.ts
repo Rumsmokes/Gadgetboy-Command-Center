@@ -61,3 +61,33 @@ export function partEtaFor(record: any) {
     ? clean(record?.estimatedDate)
     : '';
 }
+
+export type AttentionAuditGroup = 'Urgent follow-up' | 'Money & inventory review' | 'Client communication & ticket details';
+export type AttentionAuditEntry = { record: any; reasons: any[]; group: AttentionAuditGroup; priority: 'urgent' | 'review' | 'follow-up'; detail: string; action: string };
+
+const moneyAndInventoryCodes = new Set(['part-missing-eta', 'transaction-missing-cost', 'inventory-low', 'inventory-reconciliation', 'missing-order-url', 'restock-pending']);
+const urgentCodes = new Set(['client-reply-unread', 'pickup-storage-review', 'pickup-still-open', 'not-repairable-awaiting-pickup', 'email-failed', 'sync-pending', 'sync-failed', 'approval-pending-action']);
+const actionForAttentionCode = (code: string) => {
+  if (/reply/.test(code)) return 'Read & reply';
+  if (/pickup|not-repairable/.test(code)) return 'Review pickup';
+  if (/part|inventory|cost|order/.test(code)) return 'Review order';
+  if (/technician/.test(code)) return 'Assign technician';
+  return 'Open record';
+};
+
+export function buildAttentionAudit(records: any[], options: { cutoff?: string } = {}) {
+  const cutoffTime = new Date(options.cutoff || '2026-09-01T00:00:00').getTime();
+  const entries: AttentionAuditEntry[] = (Array.isArray(records) ? records : []).flatMap(record => {
+    const createdValue = record?.source?.createdAt || record?.source?.created_at || record?.source?.date || record?.activityAt;
+    const createdTime = new Date(createdValue || 0).getTime();
+    const reasons = Array.isArray(record?.attentionReasons) ? record.attentionReasons : [];
+    if (!Number.isFinite(createdTime) || createdTime < cutoffTime || !reasons.length) return [];
+    const codes = reasons.map((reason: any) => String(reason?.code || ''));
+    const group: AttentionAuditGroup = codes.some((code: string) => urgentCodes.has(code)) ? 'Urgent follow-up' : codes.some((code: string) => moneyAndInventoryCodes.has(code)) ? 'Money & inventory review' : 'Client communication & ticket details';
+    const priority = group === 'Urgent follow-up' ? 'urgent' : group === 'Money & inventory review' ? 'review' : 'follow-up';
+    return [{ record, reasons, group, priority, detail: reasons.map((reason: any) => String(reason?.label || 'Needs review')).join(' · '), action: actionForAttentionCode(codes[0] || '') }];
+  });
+  const groups = (['Urgent follow-up', 'Money & inventory review', 'Client communication & ticket details'] as AttentionAuditGroup[]).map(group => ({ group, entries: entries.filter(entry => entry.group === group) }));
+  const inScope = (Array.isArray(records) ? records : []).filter(record => new Date(record?.source?.createdAt || record?.source?.created_at || record?.source?.date || record?.activityAt || 0).getTime() >= cutoffTime);
+  return { entries, groups, metrics: { urgent: groups[0].entries.length, money: groups[1].entries.length, communication: groups[2].entries.length, completeness: inScope.length ? Math.round(((inScope.length - entries.length) / inScope.length) * 100) : 100 } };
+}

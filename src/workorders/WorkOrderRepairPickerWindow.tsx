@@ -43,8 +43,13 @@ export default function WorkOrderRepairPickerWindow() {
   }
 
   return (
-    <div className="gb-repair-picker-window flex h-screen overflow-hidden bg-zinc-900 text-gray-100">
-      <div className="gb-repair-picker-layout grid h-full w-full grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(480px,1.35fr)_minmax(300px,0.65fr)]">
+    <div className="gb-repair-picker-window grid h-screen overflow-hidden bg-[#0c0c0f] p-4 text-gray-100">
+      <section className="mx-auto flex h-full w-full max-w-6xl min-h-0 flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-[#17171c] shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-zinc-700 bg-[#1d1d23] px-5 py-4">
+          <div><h1 className="text-lg font-semibold text-zinc-100">Pick catalog repair</h1><p className="mt-1 text-xs text-zinc-400">Choose a saved repair, then add it to this work order.</p></div>
+          <button type="button" aria-label="Close repair picker" className="h-9 w-9 shrink-0 rounded-lg border border-zinc-600 bg-zinc-900 text-xl leading-none text-zinc-200" onClick={handleCancel}>×</button>
+        </header>
+        <div className="gb-repair-picker-layout grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[minmax(480px,1.35fr)_minmax(300px,0.65fr)]">
         {/* Left pane: Item list */}
         <div className="gb-repair-picker-list-pane flex flex-col min-h-0">
           <RepairItemList 
@@ -80,7 +85,8 @@ export default function WorkOrderRepairPickerWindow() {
             <div className="mt-auto grid grid-cols-2 gap-2 border-t border-zinc-800 pt-4"><button type="button" onClick={handleCancel} className="rounded border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm">Cancel</button><button type="button" onClick={() => finalize(selectedItem)} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-bold text-black">Add Repair</button></div>
           </div>}
         </aside>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }

@@ -5,7 +5,7 @@ require('ts-node').register({
   compilerOptions: { module: 'CommonJS', moduleResolution: 'Node' },
 });
 
-const { repairPresentationFor, shouldOpenAttentionPanel, isExpeditedWorkOrder, compareRepairQueuePriority, partEtaFor } = require('../src/lib/commandCenterPresentation.ts');
+const { repairPresentationFor, shouldOpenAttentionPanel, isExpeditedWorkOrder, compareRepairQueuePriority, partEtaFor, buildAttentionAudit } = require('../src/lib/commandCenterPresentation.ts');
 
 const current = repairPresentationFor({
   id: 417,
@@ -47,5 +47,14 @@ assert.ok(compareRepairQueuePriority({ stagnant:true, activityAt:'2026-09-10' },
 assert.ok(compareRepairQueuePriority({ promisedAt: '2026-09-11', activityAt: '2026-09-10' }, { activityAt: '2026-09-01' }) < 0, 'Timed repairs must sort before work with no timing data.');
 assert.equal(partEtaFor({ repairStatus: 'Waiting on Part Delivery', estimatedDate: '2026-09-18', partsEstDelivery: '2026-09-17' }), '2026-09-17');
 assert.equal(partEtaFor({ repairStatus: 'Customer Promise Scheduled', estimatedDate: '2026-09-18' }), '', 'A customer promise must not become a part ETA.');
+
+const attentionAudit = buildAttentionAudit([
+  { id: 1, activityAt: '2026-08-31T23:59:59', source: { createdAt: '2026-08-31T23:59:59' }, attentionReasons: [{ code: 'missing-device', label: 'Device information is missing' }] },
+  { id: 2, activityAt: '2026-09-01T00:00:00', source: { createdAt: '2026-09-01T00:00:00' }, attentionReasons: [{ code: 'part-missing-eta', label: 'Ordered part needs an ETA' }] },
+  { id: 3, activityAt: '2026-09-02T00:00:00', source: { createdAt: '2026-09-02T00:00:00' }, attentionReasons: [{ code: 'client-reply-unread', label: 'Unread client reply' }, { code: 'technician-unassigned', label: 'Technician assignment is missing' }] },
+]);
+assert.deepEqual(attentionAudit.entries.map(entry => entry.record.id), [2, 3], 'Needs Attention must exclude invoices before September 1.');
+assert.equal(attentionAudit.entries.find(entry => entry.record.id === 3).reasons.length, 2, 'Multiple issues must stay together on one audit entry.');
+assert.equal(attentionAudit.entries.find(entry => entry.record.id === 2).group, 'Money & inventory review');
 
 console.log('Command Center device-first repair presentation checks passed.');

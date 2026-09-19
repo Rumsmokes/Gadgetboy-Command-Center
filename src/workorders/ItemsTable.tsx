@@ -8,6 +8,7 @@ import { discountedWorkOrderItemAmounts } from '@/lib/ticketAccounting';
 import { findInventoryPartForRepair, resolveInventoryVariantForRepair } from '@/lib/inventoryPartMatching';
 import { resolveWorkOrderRepairPricing } from '@/lib/repairPartLinking';
 import InventoryVariantPicker from '@/components/InventoryVariantPicker';
+import WorkOrderItemDialog from './WorkOrderItemDialog';
 
 // Use the new WorkOrderItemRow type
 export type WorkOrderItemRow = {
@@ -29,6 +30,12 @@ export type WorkOrderItemRow = {
   supplierTaxRate?: number;
   orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
   orderDate?: string;
+  estimatedDeliveryDate?: string;
+  trackingUrl?: string;
+  itemType?: 'both' | 'part' | 'labor' | 'fee';
+  partSourceKind?: 'stock' | 'order' | 'client';
+  salvagedPart?: boolean;
+  inventoryItemName?: string;
   inventoryProductId?: number;
   inventoryParentId?: number;
   deviceModel?: string;
@@ -408,14 +415,28 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
         </div>
       ) : null}
 
-      {editing && (
-        <div className="mt-2 bg-zinc-800 border border-zinc-700 rounded p-2">
+      {editing ? <WorkOrderItemDialog
+        item={editing}
+        onClose={() => { setEditingError(''); setEditing(null); }}
+        onSave={async saved => {
+          const nextItems = items.map(row => row.id === saved.id ? saved : row);
+          await onCommit?.(nextItems);
+          onChange(nextItems);
+          setEditingError('');
+          setEditing(null);
+        }}
+      /> : null}
+
+      {editing && ((editing: WorkOrderItemRow) => false && (
+        <div className="gb-ticket-item-dialog fixed inset-0 z-[1000] flex items-center justify-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-label="Edit work-order item" onMouseDown={() => { setEditingError(''); setEditing(null); }}>
+        <div className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-800 p-4 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
           {(() => {
             const catalogLinked = !!(editing.inventoryProductId || editing.inventoryParentId);
             return <>
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
+          <div className="flex items-center justify-between gap-3 border-b border-zinc-700 pb-3">
+            <div className="text-sm font-semibold text-zinc-100">{catalogLinked ? 'Edit work-order item' : 'Add custom work-order item'}</div>
             <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={`${editing.device || ''} — ${editing.repair || ''}`.trim()}>{`${editing.device || ''} — ${editing.repair || ''}`.trim()}</div>
+            <button type="button" aria-label="Close item popup" className="shrink-0 rounded border border-zinc-600 bg-zinc-900 px-2.5 py-1 text-base leading-none text-zinc-200 hover:border-zinc-400" onClick={() => { setEditingError(''); setEditing(null); }}>×</button>
           </div>
 
           {catalogLinked ? (
@@ -623,7 +644,8 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
             </>;
           })()}
         </div>
-      )}
+        </div>
+      ))(editing)}
 
       <ContextMenu
         id="wo-items-ctx"

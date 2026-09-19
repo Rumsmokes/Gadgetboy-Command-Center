@@ -5,6 +5,7 @@ import MoneyInput from '@/components/MoneyInput';
 import { derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
 import LineDiscountDialog from '@/components/LineDiscountDialog';
 import { discountedLineTotal } from '@/lib/ticketAccounting';
+import SaleItemDialog from './SaleItemDialog';
 
 export type SaleItemRow = {
   id: string;
@@ -28,6 +29,12 @@ export type SaleItemRow = {
   requiresOrder?: boolean;
   orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
   orderDate?: string;
+  estimatedDeliveryDate?: string;
+  trackingUrl?: string;
+  sourceKind?: 'local' | 'order';
+  localStore?: string;
+  receiptReference?: string;
+  quantityAcquired?: number;
   purchaseQueueRemovedAt?: string;
   purchaseQueueRemovalNotice?: string;
   purchaseQueueRemovalPaymentStatus?: string;
@@ -416,15 +423,28 @@ const SaleItemsTable: React.FC<Props> = ({
       ) : null}
       </div>
 
-      {editing && (
-        <div className={`gb-sale-item-editor ${splitLayout ? 'is-split' : ''} bg-zinc-800 border border-zinc-700 rounded p-2 ${splitLayout ? 'h-full min-h-0 self-stretch overflow-hidden' : 'mt-2'}`}>
+      {editing ? <SaleItemDialog
+        item={editing}
+        onClose={() => { setEditingError(''); setEditing(null); }}
+        onSave={async saved => {
+          const nextItems = items.map(row => row.id === saved.id ? saved : row);
+          await onCommit?.(nextItems);
+          onChange(nextItems);
+          setEditingError('');
+          setEditing(null);
+        }}
+      /> : null}
+
+      {editing && ((editing: SaleItemRow) => false && (
+        <div className="gb-ticket-item-dialog fixed inset-0 z-[1000] flex items-center justify-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-label="Edit sale item" onMouseDown={() => { setEditingError(''); setEditing(null); }}>
+        <div className="gb-sale-item-editor max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto bg-zinc-800 border border-zinc-700 rounded p-4 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
           {(() => {
             const inventoryLinked = !!editing.inventoryProductId;
             return <>
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-zinc-200">Edit selected</div>
+          <div className="flex items-center justify-between gap-3 border-b border-zinc-700 pb-3">
+            <div className="text-sm font-semibold text-zinc-100">{inventoryLinked ? 'Edit sale item' : 'Add custom sale item'}</div>
             <div className="max-w-[75%] truncate text-[11px] text-zinc-400" title={editing.description || ''}>{editing.description || ''}</div>
-            <button type="button" className="gb-mobile-editor-back rounded border border-zinc-600 bg-zinc-900 px-2 py-1 text-xs text-zinc-200" onClick={() => { setEditingError(''); setEditing(null); }}>Back to items</button>
+            <button type="button" aria-label="Close item popup" className="shrink-0 rounded border border-zinc-600 bg-zinc-900 px-2.5 py-1 text-base leading-none text-zinc-200 hover:border-zinc-400" onClick={() => { setEditingError(''); setEditing(null); }}>×</button>
           </div>
 
           {inventoryLinked && !isConsultationItem(editing) ? (
@@ -659,7 +679,8 @@ const SaleItemsTable: React.FC<Props> = ({
             </>;
           })()}
         </div>
-      )}
+        </div>
+      ))(editing)}
       {splitLayout && !editing ? (
         <div className="gb-sale-items-empty-editor flex min-h-[16rem] items-center justify-center rounded border border-dashed border-zinc-700 bg-zinc-950/30 p-6 text-center text-sm text-zinc-400">
           Select a checkout line to review or temporarily edit its details.

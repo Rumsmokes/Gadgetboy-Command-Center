@@ -59,7 +59,7 @@ const CheckoutWindow: React.FC = () => {
   const [applyEdited, setApplyEdited] = useState<boolean>(false);
   const [paymentType, setPaymentType] = useState<PaymentType | ''>('');
   const [closeParent, setCloseParent] = useState(true);
-  const [printReceipt, setPrintReceipt] = useState(true);
+  const [printReceipt, setPrintReceipt] = useState<boolean>(false); // Receipt starts unchecked
   const [markClosed, setMarkClosed] = useState(false);
   const [completionMessage, setCompletionMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);

@@ -279,7 +279,6 @@ const NewWorkOrderWindow: React.FC = () => {
   const [initialCustomerId, setInitialCustomerId] = useState<number>(payload?.customerId || 0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [clientUpdateOpen, setClientUpdateOpen] = useState(false);
-  const [partsTrackingExpanded, setPartsTrackingExpanded] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [diagnosticOptions, setDiagnosticOptions] = useState<RepairItem[]>([]);
   const [diagnosticOpen, setDiagnosticOpen] = useState(false);
@@ -330,6 +329,7 @@ const NewWorkOrderWindow: React.FC = () => {
   dropoffAccessories: [] as DropoffAccessory[],
   });
   const [validationActive, setValidationActive] = useState<boolean>(false);
+  const [validationActionLabel, setValidationActionLabel] = useState('');
   const [warningBanner, setWarningBanner] = useState<{ message: string; details?: string } | null>(null);
   const [warningBannerVisible, setWarningBannerVisible] = useState<boolean>(false);
   const warningHideTimer = useRef<number | undefined>(undefined);
@@ -759,29 +759,9 @@ const NewWorkOrderWindow: React.FC = () => {
     }
 
     setValidationActive(true);
-    const detailText = missingRequired.map(key => REQUIRED_LABELS[key]).join(', ');
-
-    if ((action === 'save' || action === 'checkout') && missingRequired.includes('assignedTo')) {
-      setArmedValidationActions(prev => ({ ...prev, [action]: false }));
-      triggerWarningBanner(
-        `Assign a technician before ${actionDescription}`,
-        'A work order cannot be saved or checked out until a technician is assigned.'
-      );
-      return false;
-    }
-
-    if (!armedValidationActions[action]) {
-      setArmedValidationActions(prev => ({ ...prev, [action]: true }));
-      triggerWarningBanner(
-        `Review required fields before ${actionDescription}`,
-        `${detailText}. Click again to continue.`
-      );
-      return false;
-    }
-
     setArmedValidationActions(prev => ({ ...prev, [action]: false }));
-    triggerWarningBanner(`Continuing with missing fields`, detailText);
-    return true;
+    setValidationActionLabel(actionDescription);
+    return false;
   }
 
   async function reflectWorkOrderInCalendar(saved: any) {
@@ -1644,6 +1624,15 @@ const NewWorkOrderWindow: React.FC = () => {
           }
         }
 
+        const initialCheckoutReleaseForm = workOrderPersisted && effectiveId > 0 && appliedToWorkOrder > 0 && prevPayments.length === 0;
+        if (initialCheckoutReleaseForm) {
+          try {
+            await api?.openReleaseForm?.({ workOrderId: effectiveId });
+          } catch (releaseFormError) {
+            console.warn('Initial release form could not be opened for printing.', releaseFormError);
+          }
+        }
+
         if (workOrderPersisted && effectiveId > 0 && appliedToWorkOrder > 0) {
           try {
             const customerRows = wo.customerId && api?.findCustomers ? await api.findCustomers({ id: wo.customerId }) : [];
@@ -1800,6 +1789,23 @@ const NewWorkOrderWindow: React.FC = () => {
           recordId={Number((wo as any).id)}
           onClose={() => setClientUpdateOpen(false)}
         />
+      ) : null}
+      {validationActive && missingRequired.length > 0 ? (
+        <div className="fixed inset-0 z-[1100] grid place-items-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-label="Complete required work-order details">
+          <section className="w-full max-w-lg rounded-2xl border border-pink-500/60 bg-[#17171c] shadow-2xl">
+            <header className="border-b border-zinc-700 bg-[#1d1d23] px-5 py-4">
+              <h2 className="text-lg font-semibold text-zinc-100">Complete required work-order details</h2>
+              <p className="mt-1 text-sm text-zinc-400">Finish these fields before {validationActionLabel || 'continuing'}.</p>
+            </header>
+            <div className="px-5 py-4">
+              <p className="text-sm text-zinc-300">This form cannot continue until the applicable information below is recorded.</p>
+              <ul className="mt-3 space-y-2">
+                {missingRequired.map(key => <li key={key} className="rounded-lg border border-pink-500/40 bg-pink-950/35 px-3 py-2 text-sm text-pink-100">{REQUIRED_LABELS[key]}</li>)}
+              </ul>
+            </div>
+            <footer className="flex items-center justify-between gap-3 border-t border-zinc-700 bg-[#141418] px-5 py-4"><span className="text-xs text-zinc-400">Return to the form, complete these fields, then try again.</span><button type="button" className="shrink-0 rounded-lg bg-[#39ff14] px-4 py-2 text-sm font-bold text-black" onClick={() => setValidationActive(false)}>Review fields</button></footer>
+          </section>
+        </div>
       ) : null}
       {warningBanner && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[min(640px,calc(100%-48px))] transition-opacity duration-300 pointer-events-none ${warningBannerVisible ? 'opacity-100' : 'opacity-0'}`}>
@@ -1958,51 +1964,6 @@ const NewWorkOrderWindow: React.FC = () => {
             onChange={acc => setWo(w => ({ ...w, dropoffAccessories: acc }))}
           />
           {isDurantReport && (wo as any).cloudId ? <DurantProposalReview workOrderId={String((wo as any).cloudId)} onApproved={() => window.location.reload()} /> : null}
-          {/* Parts dates + order URL (under line items) */}
-          <div className={`gb-wo-parts-card gb-wo-expandable ${partsTrackingExpanded ? 'is-expanded' : 'is-collapsed'} bg-zinc-900 border border-zinc-700 rounded p-2`}>
-            <div className="gb-wo-parts-header flex items-center justify-between mb-1">
-              <div><h4 className="text-sm font-semibold text-zinc-200">Parts tracking</h4><div className="text-[11px] text-zinc-500">Not shown on printouts</div></div>
-              <button type="button" className="gb-wo-expand-toggle" aria-expanded={partsTrackingExpanded} onClick={() => setPartsTrackingExpanded(value => !value)}>{partsTrackingExpanded ? 'Collapse' : 'Expand'}</button>
-            </div>
-            <div className="gb-wo-expandable-body gb-wo-parts-grid grid grid-cols-4 gap-2">
-              <div className="gb-wo-parts-date-field">
-                <label className="block text-xs text-zinc-400">Order date</label>
-                <input
-                  type="date"
-                  className="gb-wo-parts-control w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                  value={(wo as any).partsOrderDate ? String((wo as any).partsOrderDate).substring(0, 10) : ''}
-                  onChange={e => setWo(w => ({ ...w, partsOrderDate: e.target.value || null }))}
-                />
-              </div>
-              <div className="gb-wo-parts-date-field">
-                <label className="block text-xs text-zinc-400">Est. delivery</label>
-                <input
-                  type="date"
-                  className="gb-wo-parts-control w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                  value={(wo as any).partsEstDelivery ? String((wo as any).partsEstDelivery).substring(0, 10) : ''}
-                  onChange={e => setWo(w => ({ ...w, partsEstDelivery: e.target.value || null }))}
-                />
-              </div>
-              <div className="gb-wo-parts-url-field">
-                <label className="block text-xs text-zinc-400">Tracking URL</label>
-                <input
-                  className="gb-wo-parts-control w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                  placeholder="https://..."
-                  value={(wo as any).partsTrackingUrl || ''}
-                  onChange={e => setWo(w => ({ ...w, partsTrackingUrl: e.target.value }))}
-                />
-              </div>
-              <div className="gb-wo-parts-notes-field col-span-4">
-                <label className="block text-xs text-zinc-400">Dates/notes</label>
-                <input
-                  className="gb-wo-parts-control w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-                  placeholder="e.g. Ordered 10/04, ETA 10/10"
-                  value={(wo as any).partsDates || ''}
-                  onChange={e => setWo(w => ({ ...w, partsDates: e.target.value }))}
-                />
-              </div>
-            </div>
-          </div>
           <div className={`gb-wo-notes-expandable gb-wo-expandable ${notesExpanded ? 'is-expanded' : 'is-collapsed'}`}>
             <button type="button" className="gb-wo-notes-mobile-toggle" aria-expanded={notesExpanded} onClick={() => setNotesExpanded(value => !value)}><span>Internal notes</span><strong>{notesExpanded ? 'Collapse' : 'Expand'}</strong></button>
             <div className="gb-wo-expandable-body">
