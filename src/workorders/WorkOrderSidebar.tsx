@@ -49,8 +49,9 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
     return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
   };
   const checkInAt = (workOrder as any).checkInAt || (workOrder as any).createdAt;
-  const lastUpdateAt = (workOrder as any).lastClientUpdateAt || (workOrder as any).lastStatusUpdateAt || (workOrder as any).updatedAt;
-  const lastUpdateLabel = (workOrder as any).lastClientUpdateLabel || (workOrder as any).lastStatusUpdateLabel || (workOrder as any).lastUpdateLabel || 'No client or technician update recorded';
+  const lastUpdateAt = (workOrder as any).lastClientUpdateAt || (workOrder as any).lastStatusUpdateAt || (workOrder as any).lastUpdateAt || (workOrder as any).statusUpdatedAt || (workOrder as any).updatedAt;
+  const lastUpdateLabel = (workOrder as any).lastClientUpdateLabel || (workOrder as any).lastStatusUpdateLabel || (workOrder as any).lastUpdateNote || (workOrder as any).statusUpdate || (workOrder as any).repairStatus || (workOrder as any).lastUpdateLabel || 'No client or technician update recorded';
+  const ticketStatus = String((workOrder as any).status || 'open').trim().toLowerCase() === 'closed' ? 'closed' : 'open';
   const balance = Number((workOrder as any).totals?.remaining || 0) || 0;
 
   return (
@@ -59,7 +60,7 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
       <h4 className="text-sm font-semibold text-zinc-200 mb-3">Ticket summary</h4>
       <div className="mb-4 space-y-2 rounded-lg border border-zinc-700 bg-zinc-950/40 p-3 text-xs">
         <div className="flex items-center justify-between gap-2"><span className="text-zinc-400">{saleDates ? 'Sale created' : 'Checked in'}</span><strong className="text-right text-zinc-100">{formatTimestamp(checkInAt)}</strong></div>
-        <div className="flex items-center justify-between gap-2"><span className="text-zinc-400">Status</span><strong className="rounded-full border border-violet-400/40 bg-violet-950/40 px-2 py-0.5 text-violet-100">{String(workOrder.status || 'open')}</strong></div>
+        <div className="flex items-center justify-between gap-2"><span className="text-zinc-400">Status</span>{hideStatus ? <strong className="rounded-full border border-violet-400/40 bg-violet-950/40 px-2 py-0.5 capitalize text-violet-100">{ticketStatus}</strong> : <select aria-label="Ticket status" value={ticketStatus} onChange={event => onChange({ status: event.target.value as WorkOrderStatus })} className="rounded border border-violet-400/40 bg-violet-950/40 px-2 py-0.5 text-xs font-semibold capitalize text-violet-100 focus:outline-none focus:ring-1 focus:ring-violet-300"><option value="open">Open</option><option value="closed">Closed</option></select>}</div>
         <div className="border-t border-zinc-800 pt-2"><span className="text-zinc-400">Last update</span><strong className="mt-1 block truncate text-zinc-100" title={String(lastUpdateLabel)}>{lastUpdateLabel}</strong><span className="mt-0.5 block text-zinc-500">{formatTimestamp(lastUpdateAt)}</span></div>
         <div className="flex items-center justify-between gap-2 border-t border-zinc-800 pt-2"><span className="text-zinc-400">Balance</span><strong className={balance > 0 ? 'text-[#39ff14]' : 'text-zinc-200'}>${balance.toFixed(2)}</strong></div>
       </div>
@@ -271,6 +272,11 @@ export default React.memo(WorkOrderSidebar, (prev, next) => {
     && prev.headerControl === next.headerControl
     && !!prev.validationFlags?.assignedTo === !!next.validationFlags?.assignedTo
     && String(a.status || '') === String(b.status || '')
+    && String((a as any).statusUpdate || '') === String((b as any).statusUpdate || '')
+    && String((a as any).statusUpdatedAt || '') === String((b as any).statusUpdatedAt || '')
+    && String((a as any).lastUpdateNote || '') === String((b as any).lastUpdateNote || '')
+    && String((a as any).lastUpdateAt || '') === String((b as any).lastUpdateAt || '')
+    && String((a as any).repairStatus || '') === String((b as any).repairStatus || '')
     && String(a.assignedTo || '') === String(b.assignedTo || '')
     && String(a.repairCompletionDate || '') === String(b.repairCompletionDate || '')
     && String(a.checkoutDate || '') === String(b.checkoutDate || '')

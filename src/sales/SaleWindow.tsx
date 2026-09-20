@@ -1625,6 +1625,7 @@ const SaleWindow: React.FC = () => {
           recordType={clientUpdateTarget.recordType}
           recordId={clientUpdateTarget.recordId}
           onClose={() => setClientUpdateTarget(null)}
+          onUpdated={saved => setSale(current => ({ ...current, ...saved, items: Array.isArray(saved?.items) ? saved.items : current.items }))}
         />
       ) : null}
       {warningBanner && (
@@ -1639,7 +1640,6 @@ const SaleWindow: React.FC = () => {
     <WorkOrderSidebar
       workOrder={sharedWorkOrder}
       onChange={handleSidebarChange}
-      hideStatus
       hideAssigned
       saleDates
       hideOrderDeliveryDates

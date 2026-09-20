@@ -1788,6 +1788,7 @@ const NewWorkOrderWindow: React.FC = () => {
           recordType="repair"
           recordId={Number((wo as any).id)}
           onClose={() => setClientUpdateOpen(false)}
+          onUpdated={saved => setWo(current => ({ ...current, ...saved, items: Array.isArray(saved?.items) ? saved.items : current.items }))}
         />
       ) : null}
       {validationActive && missingRequired.length > 0 ? (
