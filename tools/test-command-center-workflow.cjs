@@ -102,6 +102,17 @@ const collectedModel=buildCommandCenterModel({now,customers:[],technicians:[],wo
 assert.equal(collectedModel.collectedToday,140,'Collected Today must total applied payments recorded today across work orders and sales.');
 assert.equal(collectedModel.paymentsToday,3,'Collected Today must count every payment recorded today regardless of timestamp field.');
 
+const stableCollectedModel=buildCommandCenterModel({now,customers:[],technicians:[],workOrders:[
+  wo(85,'Checked in',{payments:[
+    {id:'payment-card-85',timestamp:'2026-09-10T14:45:00Z',applied:25,amount:25},
+    {id:'payment-card-85',timestamp:'2026-09-10T14:45:00Z',applied:25,amount:25},
+  ],amountPaid:25}),
+],sales:[
+  {id:86,status:'closed',items:[{description:'Drink'}],paymentHistory:[{id:'payment-cash-86',at:'2026-09-10T14:50:00Z',applied:15,amount:15}],amountPaid:15},
+]});
+assert.equal(stableCollectedModel.collectedToday,40,'Collected Today must count each ledger payment once, including timestamp and legacy payment-history entries.');
+assert.equal(stableCollectedModel.paymentsToday,2,'Duplicate synchronized payment events must not increase today\'s checkout count.');
+
 const pickupBalanceModel=buildCommandCenterModel({now,customers:[],technicians:[],workOrders:[
  wo(83,'Pickup',{totals:{total:200,remaining:200},amountPaid:50,payments:[{at:'2026-09-10T13:00:00Z',applied:50,amount:50}]}),
  wo(84,'Pickup',{totals:{total:200,remaining:200},amountPaid:0,payments:[{at:'2026-09-10T13:00:00Z',applied:70,amount:100,change:30}]}),

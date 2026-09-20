@@ -45,7 +45,6 @@ const QuickSaleWindow: React.FC = () => {
   const [checkoutType, setCheckoutType] = useState<'sale' | 'repair'>('sale');
   const [repairItems, setRepairItems] = useState<any[]>([]);
   const [repairSearch, setRepairSearch] = useState('');
-  const [editRequestId, setEditRequestId] = useState<string | null>(null);
   const [taxed, setTaxed] = useState<boolean>(true);
   const [busy, setBusy] = useState<boolean>(false);
 
@@ -121,7 +120,6 @@ const QuickSaleWindow: React.FC = () => {
       ...(repair?.orderSourceUrl ? { requiresOrder: true, orderStatus: 'needed' } : {}),
     } as SaleItemRow;
     setRepairLines((current) => [...current, row].slice(0, 20));
-    setEditRequestId(row.id);
   }
 
   async function handleCheckout() {
@@ -319,14 +317,14 @@ const QuickSaleWindow: React.FC = () => {
         </div>
 
         {checkoutType === 'sale' ? (
-          <SaleItemsTable items={saleItems} onChange={setSaleItems} showRequiredIndicator={saleItems.length === 0} layout="split" />
+          <SaleItemsTable items={saleItems} onChange={setSaleItems} showRequiredIndicator={saleItems.length === 0} layout="split" quickCheckout />
         ) : (
           <SaleItemsTable
             items={repairLines}
             onChange={setRepairLines}
             allowAddItems={false}
             layout="split"
-            editRequestId={editRequestId}
+            quickCheckout
             showRequiredIndicator={repairLines.length === 0}
             catalogPanel={(
               <div className="gb-quick-repair-catalog mb-3 flex min-h-0 flex-col rounded border border-zinc-700 bg-zinc-950/40 p-2">

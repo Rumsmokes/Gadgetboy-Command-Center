@@ -58,6 +58,7 @@ interface Props {
   layout?: 'stacked' | 'split';
   catalogPanel?: React.ReactNode;
   editRequestId?: string | null;
+  quickCheckout?: boolean;
 }
 
 const MAX_ITEMS = 20;
@@ -89,8 +90,10 @@ const SaleItemsTable: React.FC<Props> = ({
   layout = 'stacked',
   catalogPanel,
   editRequestId,
+  quickCheckout = false,
 }) => {
   const [selected, setSelected] = useState<string | null>(items[0]?.id || null);
+  const itemsRef = useRef(items);
   const [editing, setEditing] = useState<SaleItemRow | null>(null);
   const [discounting, setDiscounting] = useState<SaleItemRow | null>(null);
   const [editingError, setEditingError] = useState('');
@@ -102,6 +105,7 @@ const SaleItemsTable: React.FC<Props> = ({
     if (!selected) return null;
     return items.find(i => i.id === selected) || null;
   }, [items, selected]);
+  useEffect(() => { itemsRef.current = items; }, [items]);
   const removedPurchaseItems = useMemo(() => items.filter(item => !!item.purchaseQueueRemovedAt), [items]);
 
   useEffect(() => {
@@ -115,22 +119,26 @@ const SaleItemsTable: React.FC<Props> = ({
   }, [items, selected]);
 
   useEffect(() => {
-    if (!editRequestId) return;
+    if (quickCheckout || !editRequestId) return;
     const requested = items.find(item => item.id === editRequestId);
     if (!requested) return;
     setSelected(requested.id);
     setEditing({ ...requested });
     setEditingError('');
-  }, [editRequestId, items]);
+  }, [editRequestId, items, quickCheckout]);
 
   // Keep the inline editor in sync only after the user explicitly opens it.
   useEffect(() => {
+    if (quickCheckout) {
+      setEditing(null);
+      return;
+    }
     if (!selectedRow) {
       setEditing(null);
       return;
     }
     setEditing(prev => (prev ? (prev.id === selectedRow.id ? prev : { ...selectedRow }) : null));
-  }, [selectedRow]);
+  }, [selectedRow, quickCheckout]);
 
   const ctx = useContextMenu<SaleItemRow>();
   const ctxRow = ctx.state.data;
@@ -168,7 +176,7 @@ const SaleItemsTable: React.FC<Props> = ({
     const url = (ctxRow.productUrl || '').trim();
     return [
       { type: 'header', label: ctxRow.description || 'Item' },
-      { label: 'Edit…', onClick: () => { setSelected(ctxRow.id); setEditing(ctxRow); } },
+      { label: 'Edit…', disabled: quickCheckout || !!ctxRow.inventoryProductId, onClick: () => { if (quickCheckout || ctxRow.inventoryProductId) return; setSelected(ctxRow.id); setEditing(ctxRow); } },
       {
         label: 'Duplicate',
         onClick: () => {
@@ -218,7 +226,7 @@ const SaleItemsTable: React.FC<Props> = ({
         },
       },
     ];
-  }, [ctxRow, items, onChange, selected, editing?.id]);
+  }, [ctxRow, items, onChange, selected, editing?.id, quickCheckout]);
 
   async function newItem() {
     if (items.length >= MAX_ITEMS) return;
@@ -228,7 +236,8 @@ const SaleItemsTable: React.FC<Props> = ({
       try {
         const picked = await api.pickSaleProduct();
         if (!picked) return; // cancelled
-        const picks = (Array.isArray(picked) ? picked : [picked]).slice(0, Math.max(0, MAX_ITEMS - items.length));
+        const currentItems = itemsRef.current;
+        const picks = (Array.isArray(picked) ? picked : [picked]).slice(0, Math.max(0, MAX_ITEMS - currentItems.length));
         const rows: SaleItemRow[] = picks.map((product: any) => ({
           id: crypto.randomUUID(),
           inventoryProductId: typeof product.inventoryProductId === 'number' ? product.inventoryProductId : undefined,
@@ -251,10 +260,10 @@ const SaleItemsTable: React.FC<Props> = ({
           orderStatus: product.inStock ? 'in_stock' : 'needed',
         }));
         if (!rows.length) return;
-        onChange([...items, ...rows].slice(0, MAX_ITEMS));
+        onChange([...currentItems, ...rows].slice(0, MAX_ITEMS));
         const lastRow = rows[rows.length - 1];
         setSelected(lastRow.id);
-        setEditing(layout === 'split' ? lastRow : null);
+        setEditing(null);
         return;
       } catch (e) {
         console.error('[SaleItemsTable] pickSaleProduct failed', e);
@@ -361,7 +370,7 @@ const SaleItemsTable: React.FC<Props> = ({
                       return;
                     }
                     setSelected(it.id);
-                    if (splitLayout) {
+                    if (splitLayout && !quickCheckout && !it.inventoryProductId) {
                       setEditing({ ...it });
                       setEditingError('');
                     }
@@ -411,8 +420,7 @@ const SaleItemsTable: React.FC<Props> = ({
 
       {allowAddItems ? <div className="gb-sale-items-actions flex gap-2 mt-2">
         <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newItem} disabled={items.length >= MAX_ITEMS}>Pick product…</button>
-        <button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newCustomItem} disabled={items.length >= MAX_ITEMS}>+ Custom item</button>
-        <div className="self-center text-[11px] text-zinc-400">Right-click or press and hold an item to edit it.</div>
+        {!quickCheckout ? <><button className="px-3 py-1 bg-zinc-800 border border-zinc-700 rounded disabled:opacity-50" onClick={newCustomItem} disabled={items.length >= MAX_ITEMS}>+ Custom item</button><div className="self-center text-[11px] text-zinc-400">Right-click or press and hold an item to edit it.</div></> : <div className="self-center text-[11px] text-zinc-400">Inventory products keep their saved pricing and tracking details.</div>}
       </div> : <div className="mt-2 text-[11px] text-zinc-400">Right-click or press and hold a repair line to edit it.</div>}
 
       {selectedRow?.purchaseQueueRemovedAt ? (
@@ -423,7 +431,7 @@ const SaleItemsTable: React.FC<Props> = ({
       ) : null}
       </div>
 
-      {editing ? <SaleItemDialog
+      {editing && !quickCheckout && !editing.inventoryProductId ? <SaleItemDialog
         item={editing}
         onClose={() => { setEditingError(''); setEditing(null); }}
         onSave={async saved => {

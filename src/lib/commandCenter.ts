@@ -91,7 +91,7 @@ function lineTitle(record: any) {
 function sharedRecordAttention(record: CommandCenterRecord, customers: Map<string, any>): AttentionReason[] {
   const result: AttentionReason[] = [];
   const source = record.source || {};
-  if (source?.customerId != null && !customers.has(text(source.customerId))) result.push({ code: 'client-unresolved', label: 'Linked client cannot be resolved' });
+  if (!source?.quickCheckoutType && source?.customerId != null && !customers.has(text(source.customerId))) result.push({ code: 'client-unresolved', label: 'Linked client cannot be resolved' });
   if (source?.pendingSync === true || source?.pending_sync === true) result.push({ code: 'sync-pending', label: 'Record is waiting to synchronize' });
   if (lower(source?.emailDeliveryStatus || source?.email_delivery_status) === 'failed') result.push({ code: 'email-failed', label: 'Client email delivery failed' });
   const rawTotal = source?.totals?.total ?? source?.total;
@@ -114,7 +114,7 @@ function orderedPartState(workOrder: any) {
 }
 
 function paymentRecordedAt(payment: any) {
-  return payment?.at || payment?.date || payment?.createdAt || payment?.paidAt || '';
+  return payment?.at || payment?.date || payment?.createdAt || payment?.paidAt || payment?.timestamp || payment?.loggedAt || '';
 }
 
 function collectedPaymentAmount(payment: any) {
@@ -122,6 +122,40 @@ function collectedPaymentAmount(payment: any) {
   if (Number.isFinite(applied) && applied >= 0) return applied;
   const tendered = number(payment?.amount ?? payment?.tendered ?? payment?.tender ?? payment?.paid);
   return Math.max(0, tendered - number(payment?.change ?? payment?.changeDue));
+}
+
+function paymentLedgerFor(record: any) {
+  return ['payments', 'paymentHistory', 'paymentLogs'].flatMap(key => Array.isArray(record?.[key]) ? record[key] : []);
+}
+
+function paymentEventKey(record: CommandCenterRecord, payment: any) {
+  const explicitId = text(payment?.id || payment?.paymentId || payment?.transactionId || payment?.reference);
+  const fingerprint = explicitId || [
+    paymentRecordedAt(payment),
+    collectedPaymentAmount(payment),
+    text(payment?.paymentType || payment?.type),
+    number(payment?.change ?? payment?.changeDue),
+  ].join('|');
+  return `${record.kind}:${text(record.id)}:${fingerprint}`;
+}
+
+function collectedTodayPayments(records: CommandCenterRecord[], now: Date) {
+  const seen = new Set<string>();
+  return records.flatMap(record => {
+    const payments = paymentLedgerFor(record.source);
+    if (payments.length) return payments
+      .filter((payment: any) => sameLocalDay(paymentRecordedAt(payment), now))
+      .filter((payment: any) => {
+        const key = paymentEventKey(record, payment);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(collectedPaymentAmount);
+    return sameLocalDay(record.source?.checkoutDate || record.source?.paidAt, now)
+      ? [number(record.source?.amountPaid || record.total)]
+      : [];
+  });
 }
 
 function outstandingBalance(record: any, total: number) {
@@ -192,18 +226,14 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     if (record.stage === 'Waiting Device' || record.stage === 'Testing' || record.stage === 'Pickup' || record.stage === 'Completed') return false;
     return record.stage !== 'Parts';
   }).sort(compareRepairQueuePriority);
-  const todayPayments = [...workOrders, ...sales].flatMap(record => {
-    const payments = Array.isArray(record.source?.payments) ? record.source.payments : [];
-    if (payments.length) return payments.filter((payment: any) => sameLocalDay(paymentRecordedAt(payment), now)).map(collectedPaymentAmount);
-    return sameLocalDay(record.source?.checkoutDate || record.source?.paidAt, now) ? [number(record.source?.amountPaid || record.total)] : [];
-  });
+  const todayPayments = collectedTodayPayments([...workOrders, ...sales], now);
   const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const calendar = (input.calendarEvents || []).flatMap(event => {
     if (!event?.recurrenceRule) return [event];
     const occurrences = expandRecurringEvent(event, todayKey, todayKey);
     return occurrences.length ? occurrences : [];
   });
-  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday: todayPayments.reduce((sum, amount) => sum + amount, 0), paymentsToday: todayPayments.length, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
+  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday: Math.round(todayPayments.reduce((sum, amount) => sum + amount, 0) * 100) / 100, paymentsToday: todayPayments.length, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
 }
 
 export function searchCommandCenterRecords(model: CommandCenterModel, query: string) {
