@@ -88,10 +88,20 @@ function lineTitle(record: any) {
   return titles.join(', ') || text(record?.productDescription || record?.summary || record?.problemInfo || record?.problem) || 'Untitled record';
 }
 
+function isQuickCheckoutRecord(source: any) {
+  if (text(source?.quickCheckoutType)) return true;
+  if (text(source?.customerId) !== '0') return false;
+  return /quick\s*(sale|repair|checkout)/i.test([
+    source?.customerName,
+    source?.notes,
+    source?.itemDescription,
+  ].map(text).join(' '));
+}
+
 function sharedRecordAttention(record: CommandCenterRecord, customers: Map<string, any>): AttentionReason[] {
   const result: AttentionReason[] = [];
   const source = record.source || {};
-  if (!source?.quickCheckoutType && source?.customerId != null && !customers.has(text(source.customerId))) result.push({ code: 'client-unresolved', label: 'Linked client cannot be resolved' });
+  if (!isQuickCheckoutRecord(source) && source?.customerId != null && !customers.has(text(source.customerId))) result.push({ code: 'client-unresolved', label: 'Linked client cannot be resolved' });
   if (source?.pendingSync === true || source?.pending_sync === true) result.push({ code: 'sync-pending', label: 'Record is waiting to synchronize' });
   if (lower(source?.emailDeliveryStatus || source?.email_delivery_status) === 'failed') result.push({ code: 'email-failed', label: 'Client email delivery failed' });
   const rawTotal = source?.totals?.total ?? source?.total;

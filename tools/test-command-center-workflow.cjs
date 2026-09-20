@@ -113,6 +113,11 @@ const stableCollectedModel=buildCommandCenterModel({now,customers:[],technicians
 assert.equal(stableCollectedModel.collectedToday,40,'Collected Today must count each ledger payment once, including timestamp and legacy payment-history entries.');
 assert.equal(stableCollectedModel.paymentsToday,2,'Duplicate synchronized payment events must not increase today\'s checkout count.');
 
+const legacyQuickSaleModel=buildCommandCenterModel({now,customers:[],technicians:[],sales:[
+  {id:87,status:'closed',customerId:0,customerName:'Quick Sale',notes:'Quick Checkout - Sale',items:[{description:'Beverage'}],amountPaid:3.5,checkoutDate:'2026-09-10T15:00:00Z'},
+]});
+assert.ok(!legacyQuickSaleModel.needsAttention.some(record => record.id===87 && record.attentionReasons.some(reason => reason.code==='client-unresolved')),'Legacy walk-in Quick Sales must never be flagged as missing a linked client.');
+
 const pickupBalanceModel=buildCommandCenterModel({now,customers:[],technicians:[],workOrders:[
  wo(83,'Pickup',{totals:{total:200,remaining:200},amountPaid:50,payments:[{at:'2026-09-10T13:00:00Z',applied:50,amount:50}]}),
  wo(84,'Pickup',{totals:{total:200,remaining:200},amountPaid:0,payments:[{at:'2026-09-10T13:00:00Z',applied:70,amount:100,change:30}]}),
