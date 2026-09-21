@@ -3,7 +3,7 @@ import { buildCommandCenterModel, liveCommandCenterPanelRecords, removeCommandCe
 import { reconcileLegacyWorkOrders } from '@/lib/workOrderCleanup';
 import { buildAttentionAudit, shouldOpenAttentionPanel } from '@/lib/commandCenterPresentation';
 import { buildDiagnosticCheckInReopenPatch, diagnosticCheckInClosureNeedsReview, pickupLifecycleFor } from '@/lib/workOrderLifecycle';
-import { supabase } from '@/lib/supabase';
+import { isTestEnvironment, supabase } from '@/lib/supabase';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import CommandCenterRecordHoverCard from './CommandCenterRecordHoverCard';
 import { useContextMenu } from '@/lib/useContextMenu';
@@ -64,6 +64,13 @@ export default function CommandCenter(props: Props) {
   const lastReconcileRef = useRef(0);
 
   const loadClientResponses = useCallback(async () => {
+    if (isTestEnvironment()) {
+      const api: any = (window as any).api;
+      const localRows = await api?.dbGet?.('clientResponses').catch(() => []) || [];
+      const unresolvedRows = localRows.filter((row: any) => !row?.resolved_at && !row?.resolvedAt);
+      setClientResponses(unresolvedRows.filter((row: any) => !resolvedResponseIdsRef.current.has(String(row.id))));
+      return;
+    }
     const responseResult = await supabase.from('client_responses')
       .select('id,shop_id,work_order_id,legacy_record_id,customer_id,response_type,message,unread,resolved_at,created_at,delivery_status')
       .is('resolved_at', null)
@@ -102,6 +109,7 @@ export default function CommandCenter(props: Props) {
       setData({ customers: customers || [], technicians: technicians || [], workOrders: reconciledWorkOrders, sales: sales || [], calendarEvents: calendarEvents || [], calendarNotes: calendarNotes || [], purchaseOrders: purchaseOrders || [], attentionSettings });
       await loadClientResponses();
       for(const workOrder of reconciledWorkOrders){
+        if (isTestEnvironment()) continue;
         if(!pickupLifecycleFor(workOrder,new Date(),attentionSettings).reminderDue) continue;
         try{
           const {data:reminder}=await supabase.functions.invoke('client-updates',{body:{recordType:'repair',recordId:Number(workOrder.id),statusKey:'pickup_reminder',deliveryMode:'email'}});
@@ -181,6 +189,7 @@ export default function CommandCenter(props: Props) {
     return () => offs.forEach(off => { try { off?.(); } catch {} });
   }, [load, reconcileCloud, refreshCollection]);
   useEffect(() => {
+    if (isTestEnvironment()) return;
     const channel = supabase.channel('command-center-live-client-responses')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'client_responses' }, () => void loadClientResponses())
       .subscribe();

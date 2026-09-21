@@ -1151,6 +1151,80 @@ export function seedTestDataIfNeeded(dataRoot: string): SeedResult {
     }
   }
 
+  // Curated, connected examples for the Command Center. These are intentionally
+  // explicit rather than random so each operational view always has something
+  // meaningful to demonstrate and every card can be traced back to its source.
+  const todayKey = dayDates[0] || fmtDateLocal(start);
+  const yesterdayKey = fmtDateLocal(addDaysLocal(start, -1));
+  const threeDaysAgoKey = fmtDateLocal(addDaysLocal(start, -3));
+  const sixDaysAgoKey = fmtDateLocal(addDaysLocal(start, -6));
+  const tomorrowKey = fmtDateLocal(addDaysLocal(start, 1));
+  const afterTomorrowKey = fmtDateLocal(addDaysLocal(start, 2));
+  const calendarNotes: any[] = [];
+  const purchaseOrders: any[] = [];
+  const clientResponses: any[] = [];
+
+  const addConnectedWorkOrder = (input: any) => {
+    invoiceId += 1;
+    const customer = customers[input.customerIndex];
+    const technician = technicians[input.technicianIndex || 0];
+    const part = input.partName ? {
+      id: `wo-${invoiceId}-part`, description: input.partName, qty: 1, price: input.partPrice || 0,
+      requiresOrder: !!input.partOrdered, orderStatus: input.partDelivered ? 'received' : (input.partOrdered ? 'ordered' : ''),
+      partStatus: input.partDelivered ? 'delivered' : (input.partOrdered ? 'awaiting delivery' : ''),
+      orderDate: input.orderDate || '', estimatedDelivery: input.partEta || '', orderUrl: input.orderUrl || '',
+    } : null;
+    const items = [
+      ...(part ? [part] : []),
+      { id: `wo-${invoiceId}-labor`, description: input.repair, qty: 1, unitPrice: input.labor, price: input.labor, labor: true, itemType: 'labor' },
+      ...(input.expedited ? [{ id: `wo-${invoiceId}-expedite`, description: 'Expedited Service Fee', qty: 1, unitPrice: 35, price: 35, feeType: 'expedited', itemType: 'fee' }] : []),
+    ];
+    const subtotal = items.reduce((sum, item: any) => sum + Number(item.price || item.unitPrice || 0), 0);
+    const total = Math.round(subtotal * 100) / 100;
+    const amountPaid = Number(input.amountPaid || 0);
+    const row = {
+      id: invoiceId, status: input.status || 'open', assignedTo: technician.id, customerId: customer.id,
+      customerName: makeCustomerLabel(customer), customerPhone: customer.phone,
+      productCategory: input.deviceCategory, productDescription: input.deviceName, problemInfo: input.problem,
+      model: input.model || '', serial: input.serial || 'TEST-SERIAL', intakeSource: 'Test Environment',
+      checkInAt: isoAt(input.checkInDate || todayKey, input.checkInTime || '09:30'), activityAt: input.activityAt || isoAt(todayKey, '10:00'),
+      createdAt: isoAt(input.checkInDate || todayKey, input.checkInTime || '09:30'), updatedAt: input.activityAt || isoAt(todayKey, '10:00'),
+      workflowStage: input.stage, workflowUpdatedAt: input.activityAt || isoAt(todayKey, '10:00'), repairStatus: input.repairStatus, statusUpdate: input.repairStatus,
+      diagnosisStartedAt: input.diagnosisStartedAt, testingStartedAt: input.testingStartedAt, lastTechnicianActivityAt: input.lastTechnicianActivityAt || input.activityAt || isoAt(todayKey, '10:00'),
+      approvalRequestedAt: input.approvalRequestedAt, clientDecision: input.clientDecision, unreadClientReplies: input.unreadClientReplies || 0,
+      partsOrdered: !!input.partOrdered, partsOrderDate: input.orderDate || '', partsEstDelivery: input.partEta || '', partEta: input.partEta || '', partsOrderUrl: input.orderUrl || '',
+      partDeliveredAt: input.partDelivered ? isoAt(todayKey, '08:45') : '', promisedAt: input.promisedAt || '', promiseNote: input.promiseNote || '',
+      pickupReadyAt: input.pickupReadyAt || '', repairCompletionDate: input.pickupReadyAt || '', scheduledPickupAt: input.scheduledPickupAt || '',
+      quotedPrice: total, laborCost: input.labor, partCosts: input.partPrice || 0, amountPaid, paymentType: amountPaid ? 'Card' : '',
+      payments: amountPaid ? [{ id: `payment-${invoiceId}`, amount: amountPaid, at: input.paymentAt || isoAt(todayKey, '09:00'), method: 'Card' }] : [],
+      totals: { subTotal: total, tax: 0, total, remaining: Math.max(0, total - amountPaid) }, items,
+      internalNotes: input.internalNotes || '', expeditedService: !!input.expedited,
+    };
+    workOrders.push(row);
+    return row;
+  };
+
+  const diagnosing = addConnectedWorkOrder({ customerIndex: 0, technicianIndex: 0, stage: 'Diagnosing', repairStatus: 'Diagnosis In Process', deviceCategory: 'Game Console', deviceName: 'PlayStation 5', repair: 'PS5 HDMI Port Repair', labor: 120, partPrice: 24, problem: 'No display signal through HDMI.', checkInDate: todayKey, diagnosisStartedAt: isoAt(todayKey, '09:10'), activityAt: isoAt(todayKey, '09:20'), expedited: true, amountPaid: 45, paymentAt: isoAt(todayKey, '09:00'), promiseNote: 'Diagnostic update by 1 PM.', promisedAt: isoAt(todayKey, '13:00') });
+  const approval = addConnectedWorkOrder({ customerIndex: 1, technicianIndex: 1, stage: 'Approval', repairStatus: 'Awaiting Repair Approval', deviceCategory: 'iPhone', deviceName: 'iPhone 14 Pro', repair: 'Screen Repair', labor: 110, partPrice: 85, problem: 'Display is cracked but touch still works.', checkInDate: yesterdayKey, approvalRequestedAt: isoAt(yesterdayKey, '15:00'), activityAt: isoAt(yesterdayKey, '15:00'), amountPaid: 35, unreadClientReplies: 1 });
+  const awaitingPart = addConnectedWorkOrder({ customerIndex: 2, technicianIndex: 2, stage: 'Parts', repairStatus: 'Waiting on Part Delivery', deviceCategory: 'Laptop', deviceName: 'Dell Latitude 5420', repair: 'Battery Replacement', labor: 95, partName: 'Dell Latitude 5420 Battery', partPrice: 48, partOrdered: true, orderDate: todayKey, partEta: afterTomorrowKey, orderUrl: 'https://supplier.example/dell-latitude-battery', problem: 'Battery drains from 100% to 20% in under an hour.', checkInDate: threeDaysAgoKey, activityAt: isoAt(todayKey, '08:30'), amountPaid: 143, paymentAt: isoAt(todayKey, '08:15') });
+  const repairReady = addConnectedWorkOrder({ customerIndex: 3, technicianIndex: 0, stage: 'Repair', repairStatus: 'Ready for Repair', deviceCategory: 'Game Console', deviceName: 'Nintendo Switch OLED', repair: 'Charging Port Repair', labor: 105, partName: 'Nintendo Switch USB-C Port', partPrice: 18, partOrdered: true, partDelivered: true, orderDate: yesterdayKey, partEta: todayKey, orderUrl: 'https://supplier.example/switch-usbc-port', problem: 'Only charges when cable is held at an angle.', checkInDate: threeDaysAgoKey, activityAt: isoAt(todayKey, '08:45'), amountPaid: 123, paymentAt: isoAt(yesterdayKey, '14:00') });
+  const testing = addConnectedWorkOrder({ customerIndex: 4, technicianIndex: 1, stage: 'Testing', repairStatus: 'Testing In Progress', deviceCategory: 'Android', deviceName: 'Samsung Galaxy S23', repair: 'Charging Port Repair', labor: 90, partName: 'Galaxy S23 Charge Port', partPrice: 22, partDelivered: true, problem: 'Charges intermittently and disconnects from a computer.', checkInDate: yesterdayKey, testingStartedAt: isoAt(todayKey, '10:30'), activityAt: isoAt(todayKey, '10:30'), amountPaid: 112, paymentAt: isoAt(yesterdayKey, '16:30') });
+  const pickup = addConnectedWorkOrder({ customerIndex: 5, technicianIndex: 2, stage: 'Pickup', repairStatus: 'Ready for Pickup', deviceCategory: 'iPad / Tablet', deviceName: 'iPad 9th Gen', repair: 'Screen Repair', labor: 100, partPrice: 70, problem: 'Front glass cracked after a drop.', checkInDate: sixDaysAgoKey, pickupReadyAt: isoAt(todayKey, '09:40'), activityAt: isoAt(todayKey, '09:40'), amountPaid: 120, paymentAt: isoAt(sixDaysAgoKey, '11:00'), scheduledPickupAt: isoAt(tomorrowKey, '15:30') });
+  const attention = addConnectedWorkOrder({ customerIndex: 6, technicianIndex: 0, stage: 'Checked in', repairStatus: 'Checked In', deviceCategory: 'Desktop', deviceName: 'Custom Gaming PC', repair: 'Diagnostic', labor: 49, problem: 'System powers on but will not post.', checkInDate: sixDaysAgoKey, activityAt: isoAt(sixDaysAgoKey, '10:00'), amountPaid: 49, paymentAt: isoAt(sixDaysAgoKey, '10:15'), internalNotes: 'Needs a technician diagnosis.' });
+
+  purchaseOrders.push({ id: 'po-test-1', workOrderId: awaitingPart.id, customerId: awaitingPart.customerId, itemName: awaitingPart.items[0].description, orderDate: todayKey, expectedDeliveryDate: afterTomorrowKey, orderUrl: awaitingPart.partsOrderUrl, status: 'ordered', createdAt: isoAt(todayKey, '08:15'), updatedAt: isoAt(todayKey, '08:15') });
+  calendarEvents.push({ id: calendarEventId++, category: 'task', date: todayKey, time: '09:00', title: 'Begin diagnosis — PlayStation 5', workOrderId: diagnosing.id, customerId: diagnosing.customerId, technician: diagnosing.assignedTo, source: 'workorder', createdAt: nowIso, updatedAt: nowIso });
+  calendarEvents.push({ id: calendarEventId++, category: 'task', date: todayKey, time: '10:30', title: 'Complete charging test — Galaxy S23', workOrderId: testing.id, customerId: testing.customerId, technician: testing.assignedTo, source: 'workorder', createdAt: nowIso, updatedAt: nowIso });
+  calendarEvents.push({ id: calendarEventId++, category: 'parts', partsStatus: 'delivery', date: afterTomorrowKey, title: awaitingPart.items[0].description, partName: awaitingPart.items[0].description, workOrderId: awaitingPart.id, customerId: awaitingPart.customerId, customerName: awaitingPart.customerName, source: 'workorder', orderUrl: awaitingPart.partsOrderUrl, createdAt: nowIso, updatedAt: nowIso });
+  calendarNotes.push({ id: 'note-test-1', date: todayKey, workOrderId: diagnosing.id, customerId: diagnosing.customerId, body: 'Client requested a diagnostic update before lunch.', createdAt: nowIso, updatedAt: nowIso });
+  clientResponses.push({ id: 'reply-test-1', shop_id: 'test-environment', work_order_id: approval.id, legacy_record_id: approval.id, customer_id: approval.customerId, response_type: 'question', message: 'Can you confirm whether the screen price includes the frame?', unread: true, resolved_at: null, created_at: isoAt(todayKey, '09:15'), delivery_status: 'received' });
+
+  invoiceId += 1;
+  const deliveryCustomer = customers[7];
+  const deliverySale = { id: invoiceId, customerId: deliveryCustomer.id, customerName: makeCustomerLabel(deliveryCustomer), customerPhone: deliveryCustomer.phone, category: 'Retail', status: 'open', assignedTo: technicians[1].id, itemDescription: 'OtterBox Defender Case', quantity: 1, total: 64.79, amountPaid: 20, checkInAt: isoAt(todayKey, '09:35'), createdAt: isoAt(todayKey, '09:35'), updatedAt: isoAt(todayKey, '09:35'), orderedDate: isoAt(todayKey, '09:35'), estimatedDeliveryDate: isoAt(tomorrowKey, '12:00'), items: [{ id: `sale-${invoiceId}-item`, description: 'OtterBox Defender Case', qty: 1, price: 59.99, category: 'Accessory', requiresOrder: true, orderStatus: 'ordered', partStatus: 'awaiting delivery', orderDate: todayKey, estimatedDelivery: tomorrowKey, orderUrl: 'https://supplier.example/otterbox-defender' }], totals: { subTotal: 59.99, tax: 4.8, total: 64.79, remaining: 44.79 }, payments: [{ id: `payment-${invoiceId}`, amount: 20, at: isoAt(todayKey, '09:35'), method: 'Card' }] };
+  sales.push(deliverySale);
+  calendarEvents.push({ id: calendarEventId++, category: 'parts', partsStatus: 'delivery', date: tomorrowKey, title: 'OtterBox Defender Case', partName: 'OtterBox Defender Case', saleId: deliverySale.id, customerId: deliverySale.customerId, customerName: deliverySale.customerName, source: 'sale', orderUrl: deliverySale.items[0].orderUrl, createdAt: nowIso, updatedAt: nowIso });
+
   const invoiceSeq = Math.max(
     0,
     ...workOrders.map(w => Number(w.id) || 0),
@@ -1177,6 +1251,9 @@ export function seedTestDataIfNeeded(dataRoot: string): SeedResult {
     sales,
     quotes,
     calendarEvents,
+    calendarNotes,
+    purchaseOrders,
+    clientResponses,
   };
 
   try {

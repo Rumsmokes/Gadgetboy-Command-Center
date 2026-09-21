@@ -21,6 +21,7 @@ declare global {
 
   interface Window {
     GBPosAndroid?: any;
+    __GB_POS_TEST_ENVIRONMENT__?: boolean;
     __GB_POS_CONFIG__?: {
       VITE_SUPABASE_URL?: string;
       VITE_SUPABASE_PUBLISHABLE_KEY?: string;
@@ -36,6 +37,7 @@ declare global {
 
   interface Window {
     api: {
+    __GB_POS_TEST_ENVIRONMENT__?: boolean;
     getAppInfo: () => Promise<{ version: string; platform: string; arch: string; error?: string }>;
     gidgetLocalStatus?: () => Promise<any>;
     gidgetLocalSetup?: () => Promise<any>;

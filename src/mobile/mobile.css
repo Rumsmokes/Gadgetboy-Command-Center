@@ -157,6 +157,10 @@
   table-layout: fixed !important;
 }
 
+.gbpos-mobile {
+  --gb-mobile-bottom-safe: max(env(safe-area-inset-bottom), 3.25rem);
+}
+
 .gbpos-mobile * {
   min-width: 0;
   letter-spacing: 0;
@@ -1330,11 +1334,13 @@
 }
 
 .mobile-modal-content {
+  box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   min-height: 0;
   overflow: auto;
   overflow-x: hidden;
+  padding-bottom: var(--gb-mobile-bottom-safe);
   background: #09090b;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;

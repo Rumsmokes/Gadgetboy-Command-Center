@@ -2627,6 +2627,8 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 /* Quick Checkout keeps the temporary editor fixed while only its catalog/list panes scroll. */
 .gb-quick-checkout {
   box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -2647,6 +2649,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 .gb-quick-checkout .gb-sale-items-split-layout {
   height: 100%;
   min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+.gb-quick-checkout .gb-sale-items-split-layout > * {
+  min-height: 0;
+  max-height: 100%;
   overflow: hidden;
 }
 .gb-quick-checkout .gb-sale-items-list-pane {
@@ -2677,6 +2685,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   min-height: 0;
   overflow-y: auto !important;
   overscroll-behavior: contain;
+}
+.gb-quick-checkout .gb-sale-items-empty-editor {
+  min-height: 0;
 }
 .gb-quick-checkout .gb-sale-item-editor.is-split {
   display: flex;
@@ -2808,6 +2819,65 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   }
   .gb-quick-checkout .gb-sale-items {
     padding: 0.55rem !important;
+  }
+}
+
+/* Universal narrow-screen pass: preserve the POS hierarchy while allowing
+   every responsive shell and popup to use the actual available viewport. */
+@media (max-width: 767px) {
+  .gb-quick-checkout-header {
+    padding: 0.7rem 0.8rem !important;
+  }
+
+  .gb-quick-checkout-header h1 {
+    font-size: 1.05rem;
+  }
+
+  .gb-quick-checkout-layout {
+    gap: 0.65rem !important;
+    padding: 0.65rem !important;
+  }
+
+  .gb-quick-checkout-mode {
+    width: 100%;
+  }
+
+  .gb-quick-checkout-mode button {
+    flex: 1 1 0;
+  }
+
+  .gb-quick-checkout-totals {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  .gb-quick-checkout-totals > .grid-cols-3 {
+    gap: 0.4rem;
+  }
+
+  .gb-quick-checkout-totals > .grid-cols-3 > div {
+    min-width: 0;
+    padding: 0.45rem !important;
+  }
+
+  .gb-quick-checkout-totals .text-lg {
+    font-size: 1rem;
+  }
+
+  .command-center {
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .gb-ticket-item-dialog {
+    align-items: flex-end;
+    padding: 0.65rem !important;
+  }
+
+  .gb-ticket-item-dialog > div {
+    width: 100%;
+    max-height: calc(100dvh - 1.3rem) !important;
   }
 }
 

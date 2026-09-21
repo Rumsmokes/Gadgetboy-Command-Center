@@ -70,7 +70,9 @@ function applyVersionToDocumentTitle() {
 			.then((info: any) => {
 				const version = String(info?.version || '').trim();
 				if (!version) return;
-				const base = `GadgetBoy POS v${version}`;
+				const base = api?.__GB_POS_TEST_ENVIRONMENT__ === true
+					? `GadgetBoy POS — Test Environment v${version}`
+					: `GadgetBoy POS v${version}`;
 				const current = String(document.title || '').trim();
 				// If the app title is already set, don't duplicate it.
 				if (!current || /gadgetboy\s*pos/i.test(current)) {

@@ -20,7 +20,7 @@ import { storeWindowPayload } from './lib/windowPayload';
 import { openAdminTool, type AdminToolKey } from './lib/adminWindowNavigation';
 import { LoginScreen } from './auth/LoginScreen';
 import DurantApp from './durant/DurantApp';
-import { getSupabaseRuntimeConfig, supabase } from './lib/supabase';
+import { getSupabaseRuntimeConfig, isTestEnvironment, supabase } from './lib/supabase';
 import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
 import { mainRecordKind, mainRecordTypeLabel } from './lib/consultationRecord';
 import { publicAsset } from './lib/publicAsset';
@@ -261,6 +261,7 @@ const StartupStatusScreen: React.FC<{ title: string; message?: string; error?: s
 };
 
 const App: React.FC = () => {
+  const testEnvironment = isTestEnvironment();
   const clientUpdateToken = useRef<string>('');
   if (!clientUpdateToken.current) {
     try {
@@ -284,10 +285,10 @@ const App: React.FC = () => {
   const [mode, setMode] = useState<'workorders'|'sales'|'all'>('all');
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const [authLoading, setAuthLoading] = useState(true);
-  const [session, setSession] = useState<Session | null>(null);
-  const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(null);
-  const [cloudReady, setCloudReady] = useState(false);
+  const [authLoading, setAuthLoading] = useState(!testEnvironment);
+  const [session, setSession] = useState<Session | null>(testEnvironment ? ({ access_token: 'test-environment', user: { id: 'test-environment' } } as Session) : null);
+  const [staffProfile, setStaffProfile] = useState<StaffProfile | null>(testEnvironment ? { id: 'test-environment', shop_id: 'test-environment', role: 'admin', status: 'active', first_name: 'Test', last_name: 'User', email: 'test@example.com' } : null);
+  const [cloudReady, setCloudReady] = useState(testEnvironment);
   const [cloudWarning, setCloudWarning] = useState('');
   const [accessError, setAccessError] = useState('');
   const currentAuthUserIdRef = useRef<string | null>(null);
@@ -341,6 +342,11 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (testEnvironment) {
+      setAuthLoading(false);
+      setCloudReady(true);
+      return;
+    }
     let alive = true;
 
     supabase.auth.getSession().then(({ data }) => {
@@ -356,9 +362,14 @@ const App: React.FC = () => {
       alive = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadStaffProfile]);
+  }, [loadStaffProfile, testEnvironment]);
 
   useEffect(() => {
+    if (testEnvironment) {
+      setCloudReady(true);
+      void (window as any).api?.cloudClearSession?.();
+      return;
+    }
     const api = (window as any).api;
     let cancelled = false;
     if (!api?.cloudSetSession) {
@@ -393,9 +404,10 @@ const App: React.FC = () => {
       setCloudReady(true);
     });
     return () => { cancelled = true; };
-  }, [session?.access_token, staffProfile?.shop_id]);
+  }, [session?.access_token, staffProfile?.shop_id, testEnvironment]);
 
   useEffect(() => {
+    if (testEnvironment) return;
     const shopId = staffProfile?.shop_id;
     const api = (window as any).api;
     if (!cloudReady || !shopId || !api?.cloudCollectionChanged) return;
@@ -412,9 +424,10 @@ const App: React.FC = () => {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [cloudReady, staffProfile?.shop_id]);
+  }, [cloudReady, staffProfile?.shop_id, testEnvironment]);
 
   useEffect(() => {
+    if (testEnvironment) return;
     const shopId = staffProfile?.shop_id;
     const api = (window as any).api;
     if (!cloudReady || !shopId || !api?.cloudCollectionChanged) return;
@@ -429,7 +442,7 @@ const App: React.FC = () => {
       () => { void api.cloudCollectionChanged(collection); },
     ), supabase.channel(`gbpos-desktop-records-${shopId}`)).subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [cloudReady, staffProfile?.shop_id]);
+  }, [cloudReady, staffProfile?.shop_id, testEnvironment]);
 
   useEffect(() => {
     if (!cloudReady || !staffProfile?.shop_id) return;

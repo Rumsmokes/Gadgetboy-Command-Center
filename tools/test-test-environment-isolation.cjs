@@ -1,0 +1,20 @@
+/* Ensures the generated-data desktop profile cannot use production services. */
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const root = path.resolve(__dirname, '..');
+const main = fs.readFileSync(path.join(root, 'app/electron/electron-main.ts'), 'utf8');
+const preload = fs.readFileSync(path.join(root, 'app/electron/preload.ts'), 'utf8');
+const app = fs.readFileSync(path.join(root, 'src/App.tsx'), 'utf8');
+const supabase = fs.readFileSync(path.join(root, 'src/lib/supabase.ts'), 'utf8');
+const mainRenderer = fs.readFileSync(path.join(root, 'src/main.tsx'), 'utf8');
+const commandCenter = fs.readFileSync(path.join(root, 'src/components/CommandCenter.tsx'), 'utf8');
+assert.match(main, /const IS_TEST_ENVIRONMENT = \(process\.env\.GBPOS_TEST_ENVIRONMENT \|\| process\.env\.GBPOS_SEED_TEST_DATA \|\| ''\).*=== '1'/);
+assert.match(main, /Cloud sync is disabled in the generated-data test environment/);
+assert.match(main, /Email is disabled in the generated-data test environment/);
+assert.match(preload, /__GB_POS_TEST_ENVIRONMENT__: IS_TEST_ENVIRONMENT/);
+assert.match(supabase, /export function isTestEnvironment\(\)/);
+assert.match(app, /if \(testEnvironment\) \{[\s\S]*setCloudReady\(true\)/);
+assert.match(mainRenderer, /GadgetBoy POS — Test Environment/);
+assert.match(commandCenter, /if \(isTestEnvironment\(\)\) \{[\s\S]*dbGet\?\.\('clientResponses'\)/);
+console.log('Test environment isolation checks passed.');

@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const IS_TEST_ENVIRONMENT = (process.env.GBPOS_TEST_ENVIRONMENT || process.env.GBPOS_SEED_TEST_DATA || '').toString().trim() === '1';
 
 // Renderer-side caching (per-window) to avoid repeatedly transferring large collections
 // across IPC during autosave bursts.
@@ -36,6 +37,7 @@ try {
 } catch {}
 
 contextBridge.exposeInMainWorld('api', {
+  __GB_POS_TEST_ENVIRONMENT__: IS_TEST_ENVIRONMENT,
   getAppInfo: (): Promise<{ version: string; platform: string; arch: string }> => ipcRenderer.invoke('app:getInfo'),
   gidgetLocalStatus: (): Promise<any> => ipcRenderer.invoke('gidget:localStatus'),
   gidgetLocalSetup: (): Promise<any> => ipcRenderer.invoke('gidget:localSetup'),

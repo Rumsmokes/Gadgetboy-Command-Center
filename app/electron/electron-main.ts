@@ -32,6 +32,10 @@ try {
   createSupabaseClient = null;
 }
 
+// A seeded profile must never authenticate, synchronize, or send mail. This is
+// enforced in the main process even if a renderer has production configuration.
+const IS_TEST_ENVIRONMENT = (process.env.GBPOS_TEST_ENVIRONMENT || process.env.GBPOS_SEED_TEST_DATA || '').toString().trim() === '1';
+
 // Track the main window so we can avoid accidentally closing it from renderer actions.
 let mainWindow: any | null = null;
 let stopQrStatusServerForUpdate: () => Promise<void> = async () => {};
@@ -808,7 +812,9 @@ function getAppDisplayVersion(): string {
 }
 
 function getAppDisplayTitle(): string {
-  return `GadgetBoy POS v${getAppDisplayVersion()}`;
+  return IS_TEST_ENVIRONMENT
+    ? `GadgetBoy POS — Test Environment v${getAppDisplayVersion()}`
+    : `GadgetBoy POS v${getAppDisplayVersion()}`;
 }
 
 function windowTitle(prefix?: string): string {
@@ -1019,6 +1025,9 @@ function cloverApiRequest(opts: {
 }
 
 async function sendConfiguredEmail(payload: { to: string; subject: string; text?: string; html?: string; attachments?: any[]; bcc?: string }) {
+  if (IS_TEST_ENVIRONMENT) {
+    return { ok: true, skipped: true, testEnvironment: true, message: 'Email is disabled in the generated-data test environment.' };
+  }
   const cfg = readEmailConfig();
   const appPass = decryptAppPassword(cfg);
   if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
@@ -4242,6 +4251,7 @@ const CLOUD_TABLE_BY_KEY: Record<string, string> = {
 };
 
 function shouldUseCloudDb(key: string): boolean {
+  if (IS_TEST_ENVIRONMENT) return false;
   if ((process.env.GBPOS_DISABLE_CLOUD_DB || '').toString().trim() === '1') return false;
   return !!(cloudSession?.accessToken && cloudSession?.shopId && CLOUD_TABLE_BY_KEY[String(key || '')]);
 }
@@ -4292,6 +4302,11 @@ function getCloudClient() {
 }
 
 ipcMain.handle('cloud:setSession', async (_e: any, payload: any) => {
+  if (IS_TEST_ENVIRONMENT) {
+    cloudSession = null;
+    cloudClient = null;
+    return { ok: true, testEnvironment: true, message: 'Cloud sync is disabled in the generated-data test environment.' };
+  }
   const supabaseUrl = String(payload?.supabaseUrl || '').trim();
   const supabasePublishableKey = String(payload?.supabasePublishableKey || '').trim();
   const accessToken = String(payload?.accessToken || '').trim();
@@ -4335,6 +4350,7 @@ ipcMain.handle('cloud:clearSession', async () => {
 });
 
 ipcMain.handle('cloud:collectionChanged', async (_e: any, key: string) => {
+  if (IS_TEST_ENVIRONMENT) return { ok: true, key: String(key || ''), testEnvironment: true };
   const collection = String(key || '').trim();
   if (!CLOUD_TABLE_BY_KEY[collection]) return { ok: false, error: 'Unknown cloud collection.' };
   try {
@@ -5289,6 +5305,7 @@ function displayAwareWindowSize(
   preferred: { width: number; height: number },
   minimum: { width: number; height: number },
   margin = 24,
+  fillAvailable = false,
 ) {
   let display: any = null;
   try {
@@ -5303,8 +5320,8 @@ function displayAwareWindowSize(
   const workArea = display?.workArea || display?.workAreaSize || display?.bounds || { width: preferred.width, height: preferred.height };
   const availableWidth = Math.max(480, Math.floor(Number(workArea.width || preferred.width) - margin * 2));
   const availableHeight = Math.max(420, Math.floor(Number(workArea.height || preferred.height) - margin * 2));
-  const width = Math.min(preferred.width, availableWidth);
-  const height = Math.min(preferred.height, availableHeight);
+  const width = fillAvailable ? availableWidth : Math.min(preferred.width, availableWidth);
+  const height = fillAvailable ? availableHeight : Math.min(preferred.height, availableHeight);
   return {
     width,
     height,
@@ -5371,6 +5388,16 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   if (key === 'technicians') rows = rows.filter(isAssignableDesktopTechnicianRow);
   return rows;
 }
+
+// One safety net for every daughter window: it always opens within the usable
+// display, even where an older window route still has fixed preferred bounds.
+app.on('browser-window-created', (_event: any, win: any) => {
+  const fit = () => {
+    try { fitWindowIntoWorkArea(win); } catch {}
+  };
+  try { win.once('ready-to-show', fit); } catch {}
+  try { win.once('show', fit); } catch {}
+});
 
 async function cloudDbGetChanged(key: string, cursor: CloudCursor | null, limit = 0) {
   const client = getCloudClient();
@@ -5455,6 +5482,7 @@ async function synchronizeDesktopCollection(key: string, options: { bootstrapLim
 }
 
 ipcMain.handle('cloud:syncCollection', async (_event: any, key: string, options?: { bootstrapLimit?: number }) => {
+  if (IS_TEST_ENVIRONMENT) return { ok: true, key: String(key || ''), testEnvironment: true, rowsReceived: 0, pendingSync: 0 };
   try {
     return await synchronizeDesktopCollection(String(key || ''), options || {});
   } catch (error: any) {
@@ -5650,6 +5678,7 @@ function scheduleCloudSyncQueueDrain(delayMs = 1500) {
 }
 
 function queueCloudWriteForBackgroundSync(op: 'upsert' | 'delete', key: string, itemOrId: any) {
+  if (IS_TEST_ENVIRONMENT) return;
   if (!CLOUD_TABLE_BY_KEY[String(key || '')]) return;
   const legacyId = op === 'delete' ? itemOrId : legacyIdForCloudItem(key, itemOrId);
   if (legacyId === null || typeof legacyId === 'undefined') return;
@@ -5847,6 +5876,7 @@ ipcMain.handle('db-add', async (_e: any, key: string, item: any) => {
   dbLog('[DB-ADD] Added', key, 'id=', nextItem?.id);
   const ok = writeDb(nextDb);
   if (ok) {
+    if (key === 'calendarEvents') await drainDbWrites();
     queueCloudWriteForBackgroundSync('upsert', key, nextItem);
     scheduleCollectionChanged(key, nextItem);
     return nextItem;
@@ -7064,7 +7094,7 @@ ipcMain.handle('open-report-email', async (event: any, payload: any) => {
   return { ok: true };
 });
 
-if (!app.requestSingleInstanceLock()) {
+if (!(IS_TEST_ENVIRONMENT || app.requestSingleInstanceLock())) {
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -8635,7 +8665,10 @@ ipcMain.handle('open-repair-tutorial', async (event: any, payload: any) => {
       contextIsolation: true,
       preload: path.join(__dirname, '..', 'electron', 'preload.js'),
     },
-    show: false,
+    // A test run is reviewed live.  Do not depend on an asynchronous
+    // ready-to-show event to reveal it, since that event can be missed by
+    // a dev renderer that is already warm.
+    show: IS_TEST_ENVIRONMENT,
     title: windowTitle('Repair Tutorial'),
   });
   showWindowFast(child, () => centerWindow(child));
@@ -8813,6 +8846,8 @@ ipcMain.handle('open-quick-sale', async (event: any) => {
     parentWindow,
     { width: 1180, height: 840 },
     { width: 880, height: 620 },
+    24,
+    false,
   );
   const child = new BrowserWindow({
     ...windowSize,
