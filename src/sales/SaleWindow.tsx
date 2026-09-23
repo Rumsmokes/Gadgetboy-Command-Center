@@ -1338,7 +1338,7 @@ const SaleWindow: React.FC = () => {
         if (initialSaleCheckoutForm) {
           try {
             const formItems = (Array.isArray(recordToPersist.items) ? recordToPersist.items : []).map((row: any) => ({ description: row.description || 'Sale item', qty: itemUnits(row) || 1, price: Number(row.price) || 0, discountType: row.discountType, discountValue: row.discountValue }));
-            await printSaleReleaseForm({
+            await (window as any).api?.openProductForm?.({
               invoiceId: String((saved as any)?.invoiceId || currentId),
               id: Number(currentId),
               dateTimeISO: recordToPersist.checkInAt || new Date().toISOString(),
@@ -1352,6 +1352,9 @@ const SaleWindow: React.FC = () => {
               taxes: Number(updatedTotals.tax || 0),
               amountPaid: Number(newAmountPaid || 0),
               notes: String((recordToPersist as any).notes || ''),
+              autoPrint: true,
+              silent: true,
+              autoCloseMs: 1800,
             });
           } catch (formError) { console.warn('Initial sale form could not be printed.', formError); }
         }

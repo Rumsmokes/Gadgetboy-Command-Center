@@ -1611,6 +1611,10 @@ const CalendarWindow: React.FC = () => {
       setContentEditorLocked(false);
     } catch (e) { 
       console.error('delete event failed', e); 
+    } finally {
+      // A rejected delete used to leave this full-screen editor mounted, blocking all inputs.
+      setEditing(null);
+      setContentEditorLocked(false);
     }
     console.log('=== DELETE EVENT END ===');
   }

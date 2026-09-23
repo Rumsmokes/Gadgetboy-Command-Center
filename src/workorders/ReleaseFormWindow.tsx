@@ -154,6 +154,11 @@ const ReleaseFormWindow: React.FC = () => {
         }
       }));
       if (cancelled) return;
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('silent') === '1') {
+        try { (window as any).api?.notifyReleaseFormReady?.(); } catch {}
+        return;
+      }
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (!cancelled) try { window.print(); } catch {}
       }));

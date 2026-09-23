@@ -143,6 +143,7 @@ contextBridge.exposeInMainWorld('api', {
   twilioGetMessages: (customerId: number): Promise<any> => ipcRenderer.invoke('twilio:getMessages', customerId),
   twilioLogMessage: (msg: any): Promise<any> => ipcRenderer.invoke('twilio:logMessage', msg),
   openReleaseForm: (payload: any): Promise<any> => ipcRenderer.invoke('open-release-form', payload),
+  notifyReleaseFormReady: (): void => ipcRenderer.send('release-form:ready'),
   openCustomerReceipt: (payload: any): Promise<any> => ipcRenderer.invoke('open-customer-receipt', payload),
   notifyCustomerReceiptReady: (): void => ipcRenderer.send('customer-receipt:ready'),
   notifyCustomerReceiptQrFailed: (message: string): void => ipcRenderer.send('customer-receipt:qr-failed', message),

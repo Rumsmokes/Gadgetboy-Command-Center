@@ -1627,7 +1627,7 @@ const NewWorkOrderWindow: React.FC = () => {
         const initialCheckoutReleaseForm = workOrderPersisted && effectiveId > 0 && appliedToWorkOrder > 0 && prevPayments.length === 0;
         if (initialCheckoutReleaseForm) {
           try {
-            await api?.openReleaseForm?.({ workOrderId: effectiveId });
+            await api?.openReleaseForm?.({ workOrderId: effectiveId, autoPrint: true, silent: true, autoCloseMs: 1800 });
           } catch (releaseFormError) {
             console.warn('Initial release form could not be opened for printing.', releaseFormError);
           }

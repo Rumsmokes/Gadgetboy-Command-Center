@@ -461,6 +461,15 @@ function defaultProgramDataRoot(): string {
   }
 }
 
+/** Test profiles must never read the production data-location pointer or ProgramData. */
+function testEnvironmentDataRoot(): string {
+  try {
+    return path.join(app.getPath('userData'), 'GB POS Test Environment');
+  } catch {
+    return path.join(process.cwd(), 'GB POS Test Environment');
+  }
+}
+
 function dataLocationPath(): string {
   // Pointer stays in Electron userData so we can find it reliably.
   // All business data goes under the chosen dataRoot.
@@ -506,6 +515,8 @@ function canWriteToFolder(folderPath: string): { ok: boolean; error?: string } {
 
 function resolveDataRoot(): string {
   if (dataRootCache !== null) return dataRootCache;
+
+  if (IS_TEST_ENVIRONMENT) return testEnvironmentDataRoot();
 
   // Optional: allow a transient data root override (does not persist).
   // Used for local test profiles / sandboxes.
@@ -6813,27 +6824,22 @@ ipcMain.handle('open-interactive-html', async (_e: any, html: string, title?: st
 });
 // Release Form print window
 ipcMain.handle('open-release-form', async (_event: any, payload: any) => {
-  const child = new BrowserWindow({
-    width: 850,
-    height: 1100,
-    resizable: true,
-    parent: BrowserWindow.getAllWindows()[0] || undefined,
-    modal: false,
-    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
-    backgroundColor: '#ffffff',
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      backgroundThrottling: false,
-      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
-    },
-    show: false,
-    title: windowTitle('Release Form'),
-  });
-  showWindowFast(child, () => { centerWindow(child); });
+  const autoPrint = !!payload?.autoPrint;
+  const silent = !!payload?.silent;
+  const autoCloseMs = Number(payload?.autoCloseMs || 0) || 0;
+  const child = new BrowserWindow({ width: 850, height: 1100, resizable: true, parent: (autoPrint && silent) ? (mainWindow || undefined) : (BrowserWindow.getAllWindows()[0] || undefined), modal: false, ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}), backgroundColor: '#ffffff', webPreferences: { nodeIntegration: false, contextIsolation: true, backgroundThrottling: false, preload: path.join(__dirname, '..', 'electron', 'preload.js') }, show: false, title: windowTitle('Release Form') });
+  if (!(autoPrint && silent)) showWindowFast(child, () => { centerWindow(child); });
   if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
   const encoded = encodeURIComponent(JSON.stringify(payload || {}));
-  const url = isDev ? `${DEV_SERVER_URL}/?releaseForm=${encoded}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?releaseForm=${encoded}`;
+  const flags = `${autoPrint ? '&autoPrint=1' : ''}${silent ? '&silent=1' : ''}`;
+  const url = isDev ? `${DEV_SERVER_URL}/?releaseForm=${encoded}${flags}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?releaseForm=${encoded}${flags}`;
+  if (autoPrint && silent) {
+    const start = scheduleSilentPrint(child, { delayMs: 40, onDone: () => { if (autoCloseMs) setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs); } });
+    const ready = (event: any) => { if (event?.sender === child.webContents) { ipcMain.removeListener('release-form:ready', ready); start(); } };
+    ipcMain.on('release-form:ready', ready);
+    child.once('closed', () => ipcMain.removeListener('release-form:ready', ready));
+    setTimeout(() => { try { ipcMain.removeListener('release-form:ready', ready); start(); } catch {} }, SILENT_PRINT_RENDERER_READY_TIMEOUT_MS);
+  }
   child.loadURL(url);
   return { ok: true };
 });
@@ -7015,29 +7021,19 @@ ipcMain.handle('open-consult-sheet', async (event: any, payload: any) => {
 
 // Product Form print window (Sales)
 ipcMain.handle('open-product-form', async (event: any, payload: any) => {
+  const autoPrint = !!payload?.autoPrint;
+  const silent = !!payload?.silent;
+  const autoCloseMs = Number(payload?.autoCloseMs || 0) || 0;
   const parentWin = (() => { try { return BrowserWindow.fromWebContents(event?.sender); } catch { return null; } })() || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
-  const child = new BrowserWindow({
-    width: 850,
-    height: 1100,
-    resizable: true,
-    parent: parentWin as any,
-    modal: false,
-    ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}),
-    backgroundColor: '#ffffff',
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      backgroundThrottling: false,
-      preload: path.join(__dirname, '..', 'electron', 'preload.js'),
-    },
-    show: false,
-    title: windowTitle('Product Form'),
-  });
-  showWindowFast(child, () => { centerWindow(child); });
-  child.on('closed', () => { try { (parentWin as any)?.show?.(); (parentWin as any)?.focus?.(); } catch {} });
-  if (isDev && OPEN_CHILD_DEVTOOLS) child.webContents.openDevTools({ mode: 'detach' });
+  const child = new BrowserWindow({ width: 850, height: 1100, resizable: true, parent: (autoPrint && silent) ? (mainWindow || undefined) : parentWin as any, modal: false, ...(WINDOW_ICON ? { icon: WINDOW_ICON } : {}), backgroundColor: '#ffffff', webPreferences: { nodeIntegration: false, contextIsolation: true, backgroundThrottling: false, preload: path.join(__dirname, '..', 'electron', 'preload.js') }, show: false, title: windowTitle('Product Form') });
+  if (!(autoPrint && silent)) showWindowFast(child, () => { centerWindow(child); });
   const encoded = encodeURIComponent(JSON.stringify(payload || {}));
-  const url = isDev ? `${DEV_SERVER_URL}/?productForm=${encoded}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?productForm=${encoded}`;
+  const flags = `${autoPrint ? '&autoPrint=1' : ''}${silent ? '&silent=1' : ''}`;
+  const url = isDev ? `${DEV_SERVER_URL}/?productForm=${encoded}${flags}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?productForm=${encoded}${flags}`;
+  if (autoPrint && silent) {
+    const start = scheduleSilentPrint(child, { delayMs: 700, onDone: () => { if (autoCloseMs) setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs); } });
+    child.webContents.once('did-finish-load', start);
+  }
   child.loadURL(url);
   return { ok: true };
 });
