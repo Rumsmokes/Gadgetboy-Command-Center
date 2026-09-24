@@ -118,56 +118,36 @@ async function inspectWindow(win, type, orientation) {
   }
 
   if (type === 'quickSale') {
-    await win.webContents.executeJavaScript(`(() => {
-      const customItem = Array.from(document.querySelectorAll('.gb-quick-checkout button'))
-        .find((button) => button.textContent.includes('Custom item'));
-      customItem?.click();
-      return Boolean(customItem);
-    })()`);
-    await new Promise((resolve) => setTimeout(resolve, 100));
     const quickCheckout = await win.webContents.executeJavaScript(`(() => {
       const content = document.querySelector('.mobile-modal-content');
       const root = document.querySelector('.gb-quick-checkout');
       const footer = document.querySelector('.gb-quick-checkout-totals');
-      const saleItems = document.querySelector('.gb-quick-checkout .gb-sale-items');
-      const listPane = document.querySelector('.gb-quick-checkout .gb-sale-items-list-pane');
+      const customItem = Array.from(document.querySelectorAll('.gb-quick-checkout button'))
+        .find((button) => button.textContent.includes('Custom item'));
       const editor = document.querySelector('.gb-quick-checkout .gb-sale-item-editor');
-      const editorSave = Array.from(editor?.querySelectorAll('button') || []).find((button) => button.textContent.trim() === 'Save');
-      const description = editor?.querySelector('input');
       const checkout = Array.from(footer?.querySelectorAll('button') || []).find((button) => button.textContent.includes('Checkout'));
       const contentRect = content?.getBoundingClientRect();
       const rootRect = root?.getBoundingClientRect();
       const footerRect = footer?.getBoundingClientRect();
       const checkoutRect = checkout?.getBoundingClientRect();
-      const editorRect = editor?.getBoundingClientRect();
-      const editorSaveRect = editorSave?.getBoundingClientRect();
-      const descriptionRect = description?.getBoundingClientRect();
       return {
         contentOverflowY: content ? getComputedStyle(content).overflowY : '',
         rootFits: Boolean(contentRect && rootRect && rootRect.top >= contentRect.top - 2 && rootRect.bottom <= contentRect.bottom + 2),
         footerFits: Boolean(contentRect && footerRect && footerRect.top >= contentRect.top - 2 && footerRect.bottom <= contentRect.bottom + 2),
         checkoutVisible: Boolean(checkoutRect && checkoutRect.width >= 80 && checkoutRect.height >= 32 && checkoutRect.bottom <= window.innerHeight + 2),
-        checkoutRect: checkoutRect ? { width: checkoutRect.width, height: checkoutRect.height, top: checkoutRect.top, bottom: checkoutRect.bottom } : null,
         documentLocked: document.documentElement.scrollHeight <= window.innerHeight + 2 && document.body.scrollHeight <= window.innerHeight + 2,
-        editorMode: Boolean(saleItems?.classList.contains('has-editor')),
-        listHidden: Boolean(listPane && getComputedStyle(listPane).display === 'none'),
-        editorFits: Boolean(contentRect && editorRect && footerRect && editorRect.left >= contentRect.left - 2 && editorRect.right <= contentRect.right + 2 && editorRect.top >= contentRect.top - 2 && editorRect.bottom <= contentRect.bottom + 2 && (editorRect.right <= footerRect.left + 2 || editorRect.bottom <= footerRect.top + 2)),
-        descriptionVisible: Boolean(descriptionRect && descriptionRect.width >= 120 && descriptionRect.height >= 28),
-        editorSaveVisible: Boolean(editorSaveRect && editorRect && editorSaveRect.width >= 48 && editorSaveRect.height >= 24 && editorSaveRect.left >= editorRect.left - 2 && editorSaveRect.right <= editorRect.right + 2 && editorSaveRect.bottom <= window.innerHeight + 2),
+        customItemPresent: Boolean(customItem),
+        customEditorPresent: Boolean(editor),
       };
     })()`);
     assert.equal(quickCheckout.contentOverflowY, 'hidden', `Quick Checkout outer window remained scrollable in ${orientation.name}.`);
     assert.equal(quickCheckout.rootFits, true, `Quick Checkout escaped its mobile content area in ${orientation.name}.`);
     assert.equal(quickCheckout.footerFits, true, `Quick Checkout totals/footer was clipped in ${orientation.name}.`);
     assert.equal(quickCheckout.checkoutVisible, true, `Quick Checkout button was not visible in ${orientation.name}: ${JSON.stringify(quickCheckout)}`);
-    assert.equal(quickCheckout.documentLocked, true, `Quick Checkout document remained scrollable after adding an item in ${orientation.name}.`);
-    assert.equal(quickCheckout.editorMode, true, `Quick Checkout did not enter its mobile item editor in ${orientation.name}.`);
-    assert.equal(quickCheckout.listHidden, true, `Quick Checkout kept the list over the mobile editor in ${orientation.name}.`);
-    assert.equal(quickCheckout.editorFits, true, `Quick Checkout item fields did not fit above the totals in ${orientation.name}.`);
-    assert.equal(quickCheckout.descriptionVisible, true, `Quick Checkout item fields were inaccessible in ${orientation.name}.`);
-    assert.equal(quickCheckout.editorSaveVisible, true, `Quick Checkout item Save was inaccessible in ${orientation.name}.`);
+    assert.equal(quickCheckout.documentLocked, true, `Quick Checkout document remained scrollable in ${orientation.name}.`);
+    assert.equal(quickCheckout.customItemPresent, false, `Quick Checkout exposed the custom-item form in ${orientation.name}.`);
+    assert.equal(quickCheckout.customEditorPresent, false, `Quick Checkout opened a custom-item editor in ${orientation.name}.`);
   }
-
   if (type === 'checkout') {
     const checkout = await win.webContents.executeJavaScript(`(() => {
       const windowRoot = document.querySelector('.gb-checkout-window');
