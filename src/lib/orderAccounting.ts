@@ -254,7 +254,7 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
     const items = Array.isArray(record?.items) ? record.items : [];
     const payment = salePayment(record);
     items.forEach((item: any, itemIndex: number) => {
-      if (!needsSalePurchase(item)) return;
+      if (!needsSalePurchase(item, record)) return;
       const orderUrl = normalizePartOrderUrl(item?.productUrl || item?.orderSourceUrl || item?.reorderUrlTemplate || '');
       const quantity = itemQuantity(item);
       const cost = itemFullCost(item);
