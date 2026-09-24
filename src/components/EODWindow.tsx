@@ -790,6 +790,7 @@ const EODWindow: React.FC = () => {
   const [selectingDistributors, setSelectingDistributors] = useState<Set<string>>(() => new Set());
   const [deleteCandidateRows, setDeleteCandidateRows] = useState<OrderCartRow[] | null>(null);
   const [checkoutCandidateRows, setCheckoutCandidateRows] = useState<OrderCartRow[] | null>(null);
+  const [sendCartClientUpdateEnabled, setSendCartClientUpdateEnabled] = useState(false);
   const [useHistoricalOrderDate, setUseHistoricalOrderDate] = useState(false);
   const [historicalOrderDate, setHistoricalOrderDate] = useState('');
   const [previewDeletedPurchaseKeys, setPreviewDeletedPurchaseKeys] = useState<Set<string>>(() => new Set());
@@ -1803,7 +1804,7 @@ const EODWindow: React.FC = () => {
     }
   }, [isCartLayoutPreview, sales, workOrders]);
 
-  const markSelectedPurchasesOrdered = useCallback(async (selectedOverride?: OrderCartRow[], orderedOn?: string) => {
+  const markSelectedPurchasesOrdered = useCallback(async (selectedOverride?: OrderCartRow[], orderedOn?: string, sendClientUpdate = false) => {
     const selected = selectedOverride || partsPurchaseQueue.filter((row) => selectedPurchaseRows.has(row.key));
     if (!selected.length) return;
     if (isCartLayoutPreview) {
@@ -1972,9 +1973,9 @@ const EODWindow: React.FC = () => {
 
           const customer = customers.find((row) => Number(row?.id) === Number(current.customerId));
           const email = String(current.customerEmail || customer?.email || '').trim();
-          if (!email) {
+          if (sendClientUpdate && !email) {
             skippedEmailCount += 1;
-          } else {
+          } else if (sendClientUpdate) {
             const deliveryDates = selectedForWorkOrder.map(row => deliveryForRow(row)).filter(Boolean).sort();
             const result = await sendCartClientUpdate({
               recordType: 'repair',
@@ -2013,9 +2014,9 @@ const EODWindow: React.FC = () => {
 
           const customer = customers.find(row => Number(row?.id) === Number(current.customerId));
           const email = String(current.customerEmail || customer?.email || '').trim();
-          if (!email) {
+          if (sendClientUpdate && !email) {
             skippedEmailCount += 1;
-          } else {
+          } else if (sendClientUpdate) {
             const deliveryDates = selectedForSale.map(row => deliveryForRow(row)).filter(Boolean).sort();
             const result = await sendCartClientUpdate({
               recordType: 'sale',
@@ -3491,7 +3492,7 @@ const EODWindow: React.FC = () => {
               const receiptHasMissingCost = receiptRows.some(row => !row.hasCost);
               const receiptBudget = purchaseBudgetSnapshot(dailyBudget, dailyBudgetSpent, receiptCostTotal);
               return (
-              <div className="fixed inset-0 z-[100300] flex items-center justify-center overflow-y-auto bg-black/90 p-3" onClick={() => { setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); }}>
+              <div className="fixed inset-0 z-[100300] flex items-center justify-center overflow-y-auto bg-black/90 p-3" onClick={() => { setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); setSendCartClientUpdateEnabled(false); }}>
                 <section className="w-full max-w-lg rounded-lg border border-[#39FF14]/60 bg-zinc-950 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.85)]" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="Confirm selected checkout">
                   <header><h3 className="text-xl font-semibold text-[#39FF14]">Confirm Checkout</h3><p className="mt-2 text-sm text-zinc-300">Review each item's cost before checking out {receiptRows.length} selected item{receiptRows.length === 1 ? '' : 's'}.</p></header>
                   {receiptHasMissingCost ? <div className="mt-4 rounded border border-amber-500/60 bg-amber-950/30 p-3 text-sm text-amber-100"><strong className="block text-amber-300">Missing cost</strong>Some selected items are missing a cost and will not be included in the total below.</div> : null}
@@ -3512,7 +3513,8 @@ const EODWindow: React.FC = () => {
                     <div className="mt-1"><span className="text-zinc-500">Client charges</span><strong className="float-right">{formatCurrency(receiptChargeTotal)}</strong></div>
                   </div>
                   <div className="mt-4 rounded border border-violet-500/50 bg-violet-950/20 p-3"><label className="flex items-center gap-2 text-sm font-semibold text-violet-100"><input type="checkbox" checked={useHistoricalOrderDate} onChange={event => setUseHistoricalOrderDate(event.target.checked)} />Ordered on Different Day</label>{useHistoricalOrderDate ? <label className="mt-3 block text-xs text-zinc-300">Date order was checked out<input type="date" max={new Date().toLocaleDateString('en-CA')} required className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-base" value={historicalOrderDate} onChange={event => setHistoricalOrderDate(event.target.value)} /></label> : null}</div>
-                  <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => { setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); }}>Cancel</button><button type="button" disabled={purchaseUpdateBusy || (useHistoricalOrderDate && !historicalOrderDate)} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { const rows = checkoutCandidateRows; const chosenDate = useHistoricalOrderDate ? historicalOrderDate : undefined; setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); void markSelectedPurchasesOrdered(rows || undefined, chosenDate); }}>{purchaseUpdateBusy ? 'Checking out...' : 'Checkout'}</button></footer>
+                  <label className="mt-3 flex items-start gap-2 rounded border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-200"><input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#39FF14]" checked={sendCartClientUpdateEnabled} onChange={event => setSendCartClientUpdateEnabled(event.target.checked)} /><span><strong className="block text-zinc-100">Send client update</strong><span className="text-xs text-zinc-400">Off by default. Leave unchecked for an internal-only EOD order update.</span></span></label>
+                  <footer className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border border-zinc-700 px-4 py-2 text-sm" onClick={() => { setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); setSendCartClientUpdateEnabled(false); }}>Cancel</button><button type="button" disabled={purchaseUpdateBusy || (useHistoricalOrderDate && !historicalOrderDate)} className="rounded bg-[#39FF14] px-4 py-2 text-sm font-semibold text-black disabled:opacity-50" onClick={() => { const rows = checkoutCandidateRows; const chosenDate = useHistoricalOrderDate ? historicalOrderDate : undefined; setCheckoutCandidateRows(null); setUseHistoricalOrderDate(false); setHistoricalOrderDate(''); const sendClientUpdate = sendCartClientUpdateEnabled; setSendCartClientUpdateEnabled(false); void markSelectedPurchasesOrdered(rows || undefined, chosenDate, sendClientUpdate); }}>{purchaseUpdateBusy ? 'Checking out...' : 'Checkout'}</button></footer>
                 </section>
               </div>
               );

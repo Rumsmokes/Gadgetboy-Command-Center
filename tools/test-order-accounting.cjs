@@ -40,6 +40,8 @@ assert.match(workOrderItemsSource, /onCommit\?\.\(nextItems\)/, 'Work-order item
 assert.match(saleItemsSource, /onCommit\?\.\(nextItems\)/, 'Sale item edits must commit immediately so EOD reads the saved cost.');
 assert.match(eodSource, /Items arrive on different dates/, 'The EOD cart must support split delivery dates.');
 assert.match(eodSource, /estimatedDelivery: deliveryForRow\(cartRow\)/, 'Checked-out cart lines must retain their selected estimated delivery date.');
+assert.match(eodSource, /Send client update/, 'EOD checkout must offer an explicit client update choice.');
+assert.match(eodSource, /sendClientUpdate = false/, 'EOD checkout must remain internal-only by default.');
 assert.doesNotMatch(eodSource, /select every item in this distributor before applying shared shipping/, 'A distributor checkout must allow individually selected cart lines.');
 assert.match(eodSource, /selected item.*purchased, removed from the cart, and synced to reporting/, 'Selective checkout must confirm cart removal and reporting sync.');
 assert.doesNotMatch(workOrderSource, /<label[^>]*>Internal cost/, 'Parts Tracking must not own repair pricing fields.');
