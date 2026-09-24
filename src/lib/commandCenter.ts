@@ -110,6 +110,31 @@ function sharedRecordAttention(record: CommandCenterRecord, customers: Map<strin
   return result;
 }
 
+function purchaseAuditReasons(source: any, kind: CommandCenterKind, now: Date): AttentionReason[] {
+  const reasons: AttentionReason[] = [];
+  const lines = Array.isArray(source?.items) ? source.items : [];
+  const nowMs = now.getTime();
+  lines.forEach((item: any) => {
+    const partSource = lower(item?.partSourceKind);
+    const saleSource = lower(item?.sourceKind);
+    const category = lower(item?.category || item?.itemType || item?.type);
+    const nonPurchasable = item?.salvagedPart === true || item?.inStock === true || item?.isLabor === true || item?.labor === true || item?.isFee === true || item?.fee === true || partSource === 'client' || partSource === 'stock' || saleSource === 'local' || /labor|diagnostic|additional fee|\bfee\b/.test(category);
+    if (nonPurchasable) return;
+    const url = text(item?.orderSourceUrl || item?.productUrl || source?.partsOrderUrl);
+    const requiresOrder = kind === 'workorder' ? item?.requiresOrder === true || partSource === 'order' || (!!url && item?.requiresOrder !== false) : item?.requiresOrder === true || saleSource === 'order' || item?.inStock === false;
+    if (!requiresOrder) return;
+    if (item?.purchaseQueueRemovedAt) { reasons.push({ code: 'purchase-queue-removed', label: 'Ordered item was removed from the EOD cart and needs review' }); return; }
+    const status = lower(item?.orderStatus || (source?.partsOrderDate ? 'ordered' : 'needed'));
+    if (['ordered', 'received', 'delivered', 'in_stock'].includes(status)) return;
+    const cost = item?.internalCost ?? item?.cost;
+    if (cost == null || String(cost).trim() === '' || !Number.isFinite(Number(cost)) || Number(cost) <= 0) reasons.push({ code: 'purchase-cost-missing', label: 'Ordered item is missing its supplier cost' });
+    if (!url) reasons.push({ code: 'purchase-url-missing', label: 'Ordered item is missing its supplier URL' });
+    const queuedAt = new Date(item?.purchaseQueueAddedAt || item?.createdAt || source?.checkInAt || source?.createdAt || source?.updatedAt || 0).getTime();
+    if (Number.isFinite(queuedAt) && queuedAt > 0 && nowMs - queuedAt > 86400000) reasons.push({ code: 'purchase-queue-overdue', label: 'Ordered item has been waiting in the EOD cart for more than one day' });
+  });
+  return reasons;
+}
+
 function isFinishedWorkOrder(workOrder: any) {
   return isOperationallyTerminal(workOrder);
 }
@@ -215,6 +240,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   });
   workOrders.forEach(record => {
     record.attentionReasons.push(...sharedRecordAttention(record, customers));
+    record.attentionReasons.push(...purchaseAuditReasons(record.source, record.kind, now));
     const items = Array.isArray(record.source?.items) ? record.source.items : [];
     if (!isFinishedWorkOrder(record.source) && !items.length && workOrderAgeDays(record.source, now) >= Number(input.attentionSettings?.notStartedAttentionDays ?? 2)) record.attentionReasons.push({ code: 'missing-line-items', label: 'Work order still has no repair or diagnostic line items' });
     if (record.deviceLabel === 'Device not entered') record.attentionReasons.push({ code: 'missing-device', label: 'Device information is missing' });
@@ -222,6 +248,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
   sales.forEach(record => {
     record.productDelivery = productDeliveryFor(record.source);
     record.attentionReasons.push(...sharedRecordAttention(record, customers));
+    record.attentionReasons.push(...purchaseAuditReasons(record.source, record.kind, now));
     if (!isFinishedWorkOrder(record.source) && !(Array.isArray(record.source?.items) && record.source.items.length)) record.attentionReasons.push({ code: 'missing-line-items', label: `${record.kind === 'consultation' ? 'Consultation' : 'Sale'} has no line items` });
     if (record.kind === 'consultation' && !text(record.source?.appointmentDate || record.source?.appointment_date || record.source?.eventDate || record.source?.event_date)) record.attentionReasons.push({ code: 'consultation-unscheduled', label: 'Consultation has no scheduled date' });
   });

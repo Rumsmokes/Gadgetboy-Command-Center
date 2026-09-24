@@ -130,3 +130,13 @@ const reasons=[
 ];
 for(const code of ['approval-overdue','promise-overdue','part-overdue','email-failed','client-reply-unread','sync-pending'])assert.ok(reasons.some(reason=>reason.code===code),`Missing ${code}`);
 console.log('Command Center workflow projection checks passed.');
+
+const purchaseAuditModel=buildCommandCenterModel({now,customers:[],technicians:[],workOrders:[
+  wo(140,'Parts',{checkInAt:'2026-09-08T09:00:00Z',amountPaid:80,items:[{repair:'PS5 HDMI Port',parts:80,requiresOrder:true,partSourceKind:'order',orderStatus:'needed',purchaseQueueAddedAt:'2026-09-08T09:00:00Z'}]}),
+  wo(141,'Parts',{checkInAt:'2026-09-09T09:00:00Z',amountPaid:80,items:[{repair:'PS5 Fan',parts:80,requiresOrder:true,partSourceKind:'order',orderStatus:'needed',purchaseQueueRemovedAt:'2026-09-09T09:00:00Z'}]})
+]});
+const purchaseAuditReasons=purchaseAuditModel.workOrders.find(row=>row.id===140).attentionReasons.map(reason=>reason.code);
+assert.ok(purchaseAuditReasons.includes('purchase-cost-missing'),'Outstanding ordered parts without supplier cost must enter Needs Attention.');
+assert.ok(purchaseAuditReasons.includes('purchase-url-missing'),'Outstanding ordered parts without an order URL must enter Needs Attention.');
+assert.ok(purchaseAuditReasons.includes('purchase-queue-overdue'),'EOD-cart items older than one day must enter Needs Attention.');
+assert.ok(purchaseAuditModel.workOrders.find(row=>row.id===141).attentionReasons.some(reason=>reason.code==='purchase-queue-removed'),'A queued order removed from EOD must remain auditable in Needs Attention.');
