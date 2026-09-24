@@ -32,6 +32,7 @@ export type OrderCartRow = {
   purchaseOrderId?: number;
   inventoryId?: number;
   estimatedDelivery?: string;
+  queueAddedAt?: string;
 };
 
 export type OrderCartGroup = {
@@ -164,29 +165,33 @@ function salePayment(record: any): { status: OrderCartPaymentStatus; detail: str
   return { status: 'unverified', detail: 'Sale is partially paid; payment is not allocated by product.' };
 }
 
-function needsWorkOrderPurchase(item: any, record: any) {
+export function isOutstandingOrderItem(item: any, record: any, sourceType: 'workOrder' | 'sale') {
   if (item?.purchaseQueueRemovedAt) return false;
-  if (itemFullCost(item) === null) return false;
-  const hasPhysicalPart = item?.requiresOrder === true
-    || item?.inventoryProductId != null
-    || item?.trackStock === true
-    || Number(item?.parts || 0) > 0
-    || Boolean(String(item?.orderSourceUrl || item?.productUrl || record?.partsOrderUrl || '').trim());
-  if (!hasPhysicalPart) return false;
+  const partSource = String(item?.partSourceKind || '').trim().toLowerCase();
+  const saleSource = String(item?.sourceKind || '').trim().toLowerCase();
+  const category = String(item?.category || item?.itemType || item?.type || '').trim().toLowerCase();
+  if (item?.salvagedPart === true || item?.inStock === true || item?.isLabor === true || item?.labor === true || item?.isFee === true || item?.fee === true) return false;
+  if (partSource === 'client' || partSource === 'stock' || saleSource === 'local') return false;
+  if (category.startsWith('consult') || /labor|diagnostic|additional fee|\bfee\b/.test(category)) return false;
   const url = String(item?.orderSourceUrl || item?.productUrl || record?.partsOrderUrl || '').trim();
-  const requiresOrder = item?.requiresOrder === true || (!!url && item?.requiresOrder !== false);
-  const status = String(item?.orderStatus || (record?.partsOrderDate ? 'ordered' : 'needed')).toLowerCase();
-  return requiresOrder && !['ordered', 'received', 'in_stock'].includes(status);
+  const requiresOrder = sourceType === 'workOrder'
+    ? item?.requiresOrder === true || partSource === 'order' || (!!url && item?.requiresOrder !== false)
+    : item?.requiresOrder === true || saleSource === 'order' || item?.inStock === false;
+  if (!requiresOrder) return false;
+  const status = String(item?.orderStatus || (record?.partsOrderDate ? 'ordered' : 'needed')).trim().toLowerCase();
+  return !['ordered', 'received', 'delivered', 'in_stock'].includes(status);
 }
 
-function needsSalePurchase(item: any) {
-  if (item?.purchaseQueueRemovedAt) return false;
-  if (itemFullCost(item) === null) return false;
-  const category = String(item?.category || '').toLowerCase();
-  if (category.startsWith('consult')) return false;
-  const status = String(item?.orderStatus || 'needed').toLowerCase();
-  const requiresOrder = item?.requiresOrder === true || item?.inStock === false;
-  return requiresOrder && !['ordered', 'received', 'in_stock'].includes(status);
+export function purchaseQueueAddedAt(item: any, record: any) {
+  return String(item?.purchaseQueueAddedAt || item?.createdAt || record?.checkInAt || record?.createdAt || record?.updatedAt || '').trim();
+}
+
+function needsWorkOrderPurchase(item: any, record: any) {
+  return isOutstandingOrderItem(item, record, 'workOrder');
+}
+
+function needsSalePurchase(item: any, record: any) {
+  return isOutstandingOrderItem(item, record, 'sale');
 }
 
 function distributorName(item: any, url: string) {
@@ -237,6 +242,7 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
         taxExempt: item?.taxExempt === true,
         supplierTaxRate: Number(item?.supplierTaxRate ?? 8) || 8,
         estimatedDelivery: String(item?.estimatedDelivery || item?.estDelivery || '').slice(0, 10),
+          queueAddedAt: purchaseQueueAddedAt(item, record),
       });
     });
   }
@@ -281,6 +287,7 @@ export function collectOrderCartRows(workOrders: any[], sales: any[], purchaseOr
         taxExempt: item?.vendorTaxExempt === true,
         supplierTaxRate: Number(item?.supplierTaxRate ?? 8) || 8,
         estimatedDelivery: String(item?.estimatedDelivery || item?.estDelivery || '').slice(0, 10),
+          queueAddedAt: purchaseQueueAddedAt(item, record),
       });
     });
   }

@@ -166,7 +166,7 @@ const purchaseOrders = [{
 }];
 
 const rows = collectOrderCartRows(workOrders, sales, purchaseOrders);
-assert.equal(rows.length, 4, 'Only outstanding source lines with a real supplier cost and pending purchase records should enter the cart.');
+assert.equal(rows.length, 5, 'Every outstanding order-required source line should enter the cart, even when supplier cost is missing.');
 assert.equal(rows.some(row => row.itemId === 'removed-part' || row.itemId === 'removed-product'), false, 'Deleted cart tasks must remain suppressed without deleting their source items.');
 
 const sourceCartRows = rows.filter(row => !row.purchaseOrderId);
@@ -230,8 +230,10 @@ assert.equal(removedWorkOrder.items[0].trackingNumber, '');
 assert.match(removedWorkOrder.items[0].purchaseQueueRemovalNotice, /Payment was recorded/);
 assert.equal(collectOrderCartRows([{ ...workOrders[0], items: removedWorkOrder.items }], [], []).some(row => row.key === workOrder.key), false, 'A removed task must stay out of the EOD cart while its work-order item remains saved.');
 
-assert.equal(rows.some(row => row.key === 'workOrder:102:part-2'), false, 'Items without supplier cost must stay out of the purchasing cart.');
-assert.equal(collectOrderCartRows([{ id: 104, items: [{ repair: 'Reclaimed HDMI Port', internalCost: 0, requiresOrder: true }] }], [], []).length, 0, 'Zero-cost reclaimed parts must stay out of the purchasing cart after cloud round trips.');
+const paidMissingCost = rows.find(row => row.key === 'workOrder:102:part-2');
+assert.ok(paidMissingCost, 'Order-required items without supplier cost must remain in the EOD cart for audit and checkout.');
+assert.equal(paidMissingCost.hasCost, false, 'Missing supplier cost must remain visible as a cart warning instead of hiding the item.');
+assert.equal(collectOrderCartRows([{ id: 104, items: [{ repair: 'Reclaimed HDMI Port', internalCost: 0, requiresOrder: true, salvagedPart: true }] }], [], []).length, 0, 'Salvaged zero-cost parts must stay out of the purchasing cart after cloud round trips.');
 
 const paidSale = rows.find(row => row.key === 'sale:201:product-1');
 assert.equal(paidSale.totalCost, 100, 'Full unit cost must be multiplied by quantity.');
@@ -257,7 +259,7 @@ const amazon = groups.find(group => group.distributor === 'Amazon');
 assert.equal(amazon.checkoutUrl, 'https://www.amazon.com/gp/cart/view.html');
 
 const other = groups.find(group => group.distributor === 'Other Source');
-assert.equal(other.paymentWarnings, 1);
-assert.equal(other.missingCost, 0);
+assert.equal(other.paymentWarnings, 2, 'Every outstanding item without supplier cost must remain a payment warning.');
+assert.equal(other.missingCost, 1, 'The missing supplier cost must remain visible in its distributor group.');
 
 console.log('Order accounting and EOD cart checks passed.');
