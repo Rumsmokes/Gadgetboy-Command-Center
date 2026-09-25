@@ -1,0 +1,3 @@
+const GENERIC_ITEM_TITLE=/^(custom item|item|part|repair part|product)$/i;
+export function compactSupplierTitle(value:unknown,maximumLength=72):string{const normalized=String(value||'').replace(/\s+/g,' ').trim();if(!normalized)return '';const concise=normalized.replace(/\s*[|–—]\s*[^|–—]{2,}$/u,'').trim()||normalized;return concise.length<=maximumLength?concise:concise.slice(0,Math.max(1,maximumLength-1)).trimEnd()+'…';}
+export function supplierTitleForItem(currentTitle:unknown,supplierTitle:unknown):string{const current=String(currentTitle||'').trim();return current&&!GENERIC_ITEM_TITLE.test(current)?current:compactSupplierTitle(supplierTitle)||current;}

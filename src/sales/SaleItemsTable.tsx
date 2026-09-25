@@ -3,6 +3,7 @@ import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
 import { derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
+import { supplierTitleForItem } from '@/lib/supplierItemTitle';
 import LineDiscountDialog from '@/components/LineDiscountDialog';
 import { discountedLineTotal } from '@/lib/ticketAccounting';
 import SaleItemDialog from './SaleItemDialog';
@@ -310,6 +311,7 @@ const SaleItemsTable: React.FC<Props> = ({
         const internalCost = typeof meta.price === 'number' ? meta.price : current.internalCost;
         const markupPct = current.markupPct ?? 10;
         const price = markedUpPartPrice(internalCost, markupPct);
+        const description = supplierTitleForItem(current.description, meta.title);
         return {
           ...current,
           productUrl,

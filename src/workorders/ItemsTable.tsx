@@ -3,6 +3,7 @@ import ContextMenu, { ContextMenuItem } from '@/components/ContextMenu';
 import { useContextMenu } from '@/lib/useContextMenu';
 import MoneyInput from '@/components/MoneyInput';
 import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
+import { supplierTitleForItem } from '@/lib/supplierItemTitle';
 import LineDiscountDialog from '@/components/LineDiscountDialog';
 import { discountedWorkOrderItemAmounts } from '@/lib/ticketAccounting';
 import { findInventoryPartForRepair, resolveInventoryVariantForRepair } from '@/lib/inventoryPartMatching';
@@ -285,6 +286,7 @@ const ItemsTable: React.FC<Props> = ({ items, onChange, onCommit, onAddProduct, 
         const markupPct = current.markupPct ?? DEFAULT_PART_MARKUP_PCT;
         const suggestedParts = markedUpPartPrice(internalCost, markupPct);
         const distributor = current.distributor || meta.vendor || derivePartVendorFromUrl(orderSourceUrl);
+        const repair = supplierTitleForItem(current.repair, meta.title);
         return {
           ...current,
           orderSourceUrl,
