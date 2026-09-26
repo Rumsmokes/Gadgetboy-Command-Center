@@ -784,6 +784,8 @@ const EODWindow: React.FC = () => {
   const [vendors, setVendors] = useState<any[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [shopSettingsRecord, setShopSettingsRecord] = useState<any>({});
+  const [cloverTotalDraft, setCloverTotalDraft] = useState('');
+  const [cloverSaving, setCloverSaving] = useState(false);
   const [selectedPurchaseRows, setSelectedPurchaseRows] = useState<Set<string>>(() => new Set());
   const [cartRefreshBusy, setCartRefreshBusy] = useState(false);
   const [cartPriceReview, setCartPriceReview] = useState<Array<{ key: string; title: string; previousUnitCost: number; nextUnitCost: number }> | null>(null);
@@ -1012,6 +1014,26 @@ const EODWindow: React.FC = () => {
       try { offCalendar?.(); } catch {}
     };
   }, []);
+
+  const cloverDayKey = useMemo(() => { const today = new Date(); return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`; }, [reportDayKey]);
+  const savedCloverTotal = shopSettingsRecord?.cloverDailyTotals?.[cloverDayKey];
+
+  useEffect(() => {
+    setCloverTotalDraft(savedCloverTotal == null || savedCloverTotal === '' ? '' : String(savedCloverTotal));
+  }, [cloverDayKey, savedCloverTotal]);
+
+  const saveCloverTotal = async () => {
+    const parsed = Number(cloverTotalDraft);
+    if (!Number.isFinite(parsed) || parsed < 0) { window.alert('Enter the Clover total as a non-negative amount.'); return; }
+    const api: any = (window as any).api || {};
+    const updated = { ...shopSettingsRecord, cloverDailyTotals: { ...(shopSettingsRecord?.cloverDailyTotals || {}), [cloverDayKey]: Math.round(parsed * 100) / 100 }, updatedAt: new Date().toISOString() };
+    setCloverSaving(true);
+    try {
+      const saved = updated.id ? await api.dbUpdate?.('settings', updated.id, updated) : await api.dbAdd?.('settings', updated);
+      setShopSettingsRecord(saved || updated);
+    } catch (error) { console.error('Failed to save Clover reconciliation total', error); window.alert('Clover total could not be saved.'); }
+    finally { setCloverSaving(false); }
+  };
 
   const settingsPayload = useMemo(() => ({ ...savedSettings }), [savedSettings]);
 
@@ -3171,6 +3193,7 @@ const EODWindow: React.FC = () => {
                   <h3 className="text-lg font-semibold">Batch totals</h3>
                   <span className="text-xs text-zinc-500">{loadingData ? '...' : rangeLabel(range, start, end)}</span>
                 </div>
+                <div className="rounded border border-violet-500/40 bg-violet-950/20 p-2 text-sm"><div className="flex flex-wrap items-end gap-2"><label className="min-w-44 flex-1 text-xs text-violet-200">Clover actual total<input aria-label="Clover actual total" type="number" min="0" step="0.01" className="mt-1 w-full rounded border border-violet-400/40 bg-zinc-950 px-2 py-1.5 text-sm text-white" value={cloverTotalDraft} onChange={event => setCloverTotalDraft(event.target.value)} placeholder="Enter Clover total" /></label><button type="button" className="rounded border border-violet-300/50 bg-violet-500 px-3 py-1.5 text-xs font-bold text-black disabled:opacity-50" disabled={cloverSaving || !cloverTotalDraft.trim()} onClick={() => { void saveCloverTotal(); }}>{cloverSaving ? 'Saving…' : 'Reconcile'}</button></div><p className="mt-1 text-[11px] text-zinc-400">Enter the total from Clover. Any difference from POS checkouts is sent to Needs Attention.</p></div>
                 <div className="grid min-h-0 grid-cols-2 gap-2 overflow-y-auto pr-1 text-sm">
                   <div className="col-span-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Payments received</div>
                   <div className="bg-zinc-800 border border-zinc-700 rounded p-2">

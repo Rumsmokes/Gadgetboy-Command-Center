@@ -9,6 +9,7 @@ const os = require('os');
 const nodeCrypto = require('crypto');
 const { spawn } = require('child_process');
 const { seedTestDataIfNeeded } = require('./seed-test-data');
+const { sanitizeAccidentalTestData } = require('./test-data-quarantine');
 const { registerGidgetLocalIpc } = require('./gidget-local');
 const { resolveDownloadedInstallerPath } = require('./update-launcher');
 const { createCheckoutSessionRegistry } = require('./checkout-session');
@@ -3978,6 +3979,19 @@ function readDb() {
     const raw = fs.readFileSync(p, 'utf-8');
     const parsed = JSON.parse(raw || '{}');
     dbCache = (parsed && typeof parsed === 'object') ? parsed : defaultDb();
+    if (!IS_TEST_ENVIRONMENT) {
+      const sanitized = sanitizeAccidentalTestData(dbCache);
+      if (sanitized.summary.removed > 0 || sanitized.summary.clearedMetadata) {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupPath = path.join(path.dirname(p), 'gbpos-db-before-test-data-quarantine-' + stamp + '.json');
+        const tempPath = p + '.test-data-quarantine.tmp';
+        fs.copyFileSync(p, backupPath);
+        fs.writeFileSync(tempPath, JSON.stringify(sanitized.db), 'utf-8');
+        fs.renameSync(tempPath, p);
+        dbCache = sanitized.db;
+        appendStartupLog('test-data-quarantine removed=' + sanitized.summary.removed + ' backup=' + backupPath);
+      }
+    }
     if (!Array.isArray((dbCache as any).customers)) (dbCache as any).customers = [];
     if (!Array.isArray((dbCache as any).workOrders)) (dbCache as any).workOrders = [];
     return dbCache;

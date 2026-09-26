@@ -17,4 +17,5 @@ assert.match(supabase, /export function isTestEnvironment\(\)/);
 assert.match(app, /if \(testEnvironment\) \{[\s\S]*setCloudReady\(true\)/);
 assert.match(mainRenderer, /GadgetBoy POS — Test Environment/);
 assert.match(commandCenter, /if \(isTestEnvironment\(\)\) \{[\s\S]*dbGet\?\.\('clientResponses'\)/);
+assert.match(app, /if \(testEnvironment \|\| !cloudReady \|\| !staffProfile\?\.shop_id\) return;/, 'test mode must skip startup inventory reconciliation entirely');
 console.log('Test environment isolation checks passed.');

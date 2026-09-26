@@ -445,14 +445,14 @@ const App: React.FC = () => {
   }, [cloudReady, staffProfile?.shop_id, testEnvironment]);
 
   useEffect(() => {
-    if (!cloudReady || !staffProfile?.shop_id) return;
+    if (testEnvironment || !cloudReady || !staffProfile?.shop_id) return;
     void (async () => {
       await reconcilePaidSaleInventory((window as any).api);
       await reconcilePaidWorkOrderInventory((window as any).api);
     })().catch((error) => {
       console.error('Startup inventory reconciliation failed', error);
     });
-  }, [cloudReady, staffProfile?.shop_id]);
+  }, [cloudReady, staffProfile?.shop_id, testEnvironment]);
 
   if (authLoading) {
     return <StartupStatusScreen title="Checking login" message="Connecting to your POS session..." />;

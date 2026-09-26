@@ -52,11 +52,13 @@ export interface CommandCenterModel {
   productDeliveries: CommandCenterRecord[];
   collectedToday: number;
   paymentsToday: number;
+  cloverReconciliation: { date: string; cloverTotal: number | null; posTotal: number; variance: number; reconciled: boolean };
+  globalAttention: Array<{ code: 'clover-variance'; label: string; amount: number }>;
   stages: Record<string, CommandCenterRecord[]>;
   today: { tasks: any[]; events: any[]; notes: any[]; consultations: CommandCenterRecord[]; deliveries: any[] };
 }
 
-type CommandCenterInput = { customers?: any[]; technicians?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; calendarNotes?: any[]; purchaseOrders?: any[]; attentionSettings?: any; now?: Date };
+type CommandCenterInput = { customers?: any[]; technicians?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; calendarNotes?: any[]; purchaseOrders?: any[]; attentionSettings?: any; cloverDailyTotals?: Record<string, unknown>; now?: Date };
 
 const text = (value: any) => String(value ?? '').trim();
 const number = (value: any) => Number(value || 0) || 0;
@@ -74,6 +76,7 @@ const sameLocalDay = (value: any, now: Date) => {
   return Number.isFinite(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
 };
 const calendarKind = (event: any) => lower(event?.category || event?.type || event?.eventType);
+const localDayKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const consultationDateFor = (record: CommandCenterRecord) => record.source?.appointmentDate || record.source?.appointment_date || record.source?.eventDate || record.source?.event_date || record.activityAt;
 
 function customerNameFor(record: any, customers: Map<string, any>) {
@@ -265,13 +268,19 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     return record.stage !== 'Parts';
   }).sort(compareRepairQueuePriority);
   const todayPayments = collectedTodayPayments([...workOrders, ...sales], now);
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayKey = localDayKey(now);
+  const collectedToday = Math.round(todayPayments.reduce((sum, amount) => sum + amount, 0) * 100) / 100;
+  const rawCloverTotal = input.cloverDailyTotals?.[todayKey];
+  const cloverTotal = rawCloverTotal == null || String(rawCloverTotal).trim() === '' || !Number.isFinite(Number(rawCloverTotal)) ? null : Math.round(Number(rawCloverTotal) * 100) / 100;
+  const variance = cloverTotal == null ? 0 : Math.round((cloverTotal - collectedToday) * 100) / 100;
+  const cloverReconciliation = { date: todayKey, cloverTotal, posTotal: collectedToday, variance, reconciled: cloverTotal != null && Math.abs(variance) < 0.005 };
+  const globalAttention = cloverTotal != null && !cloverReconciliation.reconciled ? [{ code: 'clover-variance' as const, amount: variance, label: variance > 0 ? 'Clover total is higher than POS checkouts' : 'Clover total is lower than POS checkouts' }] : [];
   const calendar = (input.calendarEvents || []).flatMap(event => {
     if (!event?.recurrenceRule) return [event];
     const occurrences = expandRecurringEvent(event, todayKey, todayKey);
     return occurrences.length ? occurrences : [];
   });
-  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday: Math.round(todayPayments.reduce((sum, amount) => sum + amount, 0) * 100) / 100, paymentsToday: todayPayments.length, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
+  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday, paymentsToday: todayPayments.length, cloverReconciliation, globalAttention, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
 }
 
 export function searchCommandCenterRecords(model: CommandCenterModel, query: string) {

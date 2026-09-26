@@ -148,6 +148,11 @@ jobs:
           npm run test:durant-styled-review
           npm run test:web-pwa-release
           npm run test:feedback-gidget
+          node tools/test-production-test-data-quarantine.cjs
+          node tools/test-fixture-cleanup.cjs
+          node tools/test-test-environment-isolation.cjs
+          node tools/test-collected-today-ledger.cjs
+          node tools/test-clover-reconciliation.cjs
 
       - name: Build electron main
         run: npx tsc --project tsconfig.electron.json
