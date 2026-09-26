@@ -264,4 +264,12 @@ const other = groups.find(group => group.distributor === 'Other Source');
 assert.equal(other.paymentWarnings, 2, 'Every outstanding item without supplier cost must remain a payment warning.');
 assert.equal(other.missingCost, 1, 'The missing supplier cost must remain visible in its distributor group.');
 
+
+const staleInStockOrderedSale = collectOrderCartRows([], [{
+  id: 1513, customerName: 'Betsy Smith', amountPaid: 210.59, totals: { total: 210.59, remaining: 0 },
+  items: [{ id: 'iphone-se', description: 'iPhone SE 64gb Red', qty: 1, price: 194.99, internalCost: 150, distributor: 'Back Market', productUrl: 'https://supplier.example/iphone-se', sourceKind: 'order', requiresOrder: true, inStock: false, orderStatus: 'in_stock' }],
+}], []);
+assert.equal(staleInStockOrderedSale.length, 1, 'A sale line marked for supplier order must remain in the EOD cart even when a stale in_stock status was retained.');
+assert.equal(staleInStockOrderedSale[0].key, 'sale:1513:iphone-se');
+
 console.log('Order accounting and EOD cart checks passed.');

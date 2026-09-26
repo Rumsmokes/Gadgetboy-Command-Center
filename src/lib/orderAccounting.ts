@@ -179,6 +179,11 @@ export function isOutstandingOrderItem(item: any, record: any, sourceType: 'work
     : item?.requiresOrder === true || saleSource === 'order' || item?.inStock === false;
   if (!requiresOrder) return false;
   const status = String(item?.orderStatus || (record?.partsOrderDate ? 'ordered' : 'needed')).trim().toLowerCase();
+  // A supplier-order flag is authoritative: older sales can retain `in_stock`
+  // after a technician switches them back to an ordered item. Only an actual
+  // EOD checkout or delivery status removes that line from the purchasing cart.
+  const orderedForCart = item?.requiresOrder === true || partSource === 'order' || saleSource === 'order';
+  if (status === 'in_stock' && orderedForCart) return true;
   return !['ordered', 'received', 'delivered', 'in_stock'].includes(status);
 }
 
