@@ -6071,7 +6071,7 @@ function QuoteGeneratorWindow(): JSX.Element {
                               input.click();
                             }}>Add Image</button>
                           </div>
-                          <div className="flex gap-2 items-center overflow-x-auto whitespace-nowrap min-h-[40px]">
+                          <div className="flex gap-2 items-center overflow-x-auto whitespace-nowrap min-h-[40px] rounded border border-dashed border-zinc-700 p-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void addImagesToItem(idx, event.dataTransfer.files); }}>
                             {it.images && it.images.length > 0 ? (
                               it.images.map((src, i) => (
                                 <div key={i} className="relative w-20 h-20 flex-none border border-zinc-700 rounded overflow-hidden">
@@ -6663,37 +6663,10 @@ function QuoteGeneratorWindow(): JSX.Element {
 
           {showPreview && (
             <div ref={quotePreviewRef} className="quote-customer-preview fixed inset-0 bg-zinc-950 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
-            {/* Floating toolbar outside the scrollable preview so Print is always accessible */}
-            <div className="absolute top-3 right-3 z-10 flex flex-wrap items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-              <button
-                className="px-4 py-2 bg-violet-700 text-white border border-violet-500 rounded-md text-base font-semibold hover:bg-violet-600 focus:outline-none focus:ring-2 focus:ring-violet-400/50"
-                onClick={() => void toggleQuotePreviewFullscreen()}
-              >Fullscreen</button>
-              <button
-                className="px-4 py-2 bg-zinc-900 text-gray-100 border border-zinc-700 rounded-md text-base font-semibold hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#39FF14]/60"
-                onClick={printDocument}
-              >Print</button>
-              <button
-                className="px-4 py-2 bg-blue-600 text-white rounded-md text-base font-semibold hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
-                onClick={async () => {
-                  try {
-                    if (mode !== 'sales') return;
-                    const cust = (sales.customerName || '').trim() || 'Customer';
-                    const logoDataUrl = await tryGetLogoDataUrl();
-                    const html = buildSalesPrintHtml(logoDataUrl);
-                    // Word can open HTML when saved with .doc extension
-                    downloadTextFile(`Quote-${cust}-print.doc`, html, 'application/msword');
-                  } catch {
-                    setSaveMsg('Could not save'); setTimeout(() => setSaveMsg(null), 2000);
-                  }
-                }}
-              >Save</button>
-              <button
-                className="px-4 py-2 bg-zinc-800 text-gray-100 border border-zinc-700 rounded-md text-base font-semibold hover:bg-zinc-700"
-                onClick={() => setShowPreview(false)}
-              >Close</button>
+            <div className="quote-preview-toolbar absolute top-3 right-3 z-10" onClick={(e) => e.stopPropagation()}>
+              <button className="px-4 py-2 bg-violet-700 text-white border border-violet-500 rounded-md text-base font-semibold hover:bg-violet-600" onClick={() => void toggleQuotePreviewFullscreen()}>Fullscreen</button>
             </div>
-            <div id="quote-print-root" className="bg-white text-black overflow-auto shadow-xl" style={{ width: 'calc(100vw - 24px)', height: 'calc(100vh - 24px)', paddingTop: 54 }} onClick={(e) => e.stopPropagation()}>
+            <div id="quote-print-root" className="bg-white text-black overflow-auto shadow-xl" style={{ width: 'calc(100vw - 24px)', height: 'calc(100vh - 24px)' }} onClick={(e) => e.stopPropagation()}>
               <div className="p-6">
                 {mode === 'sales' ? (
                   <div>
@@ -6713,6 +6686,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                       @media screen {
                         .quote-customer-preview #quote-print-root .print-page { width:min(100%, 1200px) !important; min-height:auto !important; margin:12px auto !important; }
                         .quote-customer-preview #quote-print-root { scrollbar-color:#71717a #e4e4e7; scrollbar-width:thin; }
+                        .quote-customer-preview:fullscreen .quote-preview-toolbar { display:none; }
+                        .quote-customer-preview:fullscreen #quote-print-root { width:100vw !important; height:100vh !important; box-shadow:none !important; }
                       }
                     `}</style>
                     {/* Custom PC/Build preview pages OR default device view */}

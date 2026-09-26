@@ -41,8 +41,8 @@ export default function QuoteOptionViewer({ onClose }: { onClose: () => void }) 
   };
 
   return (
-    <div ref={rootRef} className="fixed inset-0 z-[80] flex flex-col bg-[#09090b] text-zinc-100" onClick={event => event.stopPropagation()}>
-      <header className="flex flex-wrap items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3">
+    <div ref={rootRef} className="quote-option-viewer fixed inset-0 z-[80] flex flex-col bg-[#09090b] text-zinc-100" onClick={event => event.stopPropagation()}>
+      <header className="quote-option-toolbar flex flex-wrap items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-bold text-[#39FF14]">Option Viewer</h2>
           <p className="text-xs text-zinc-400">Image-only presentation for cases, colors, styles, and other customer choices.</p>
@@ -54,7 +54,7 @@ export default function QuoteOptionViewer({ onClose }: { onClose: () => void }) 
         )}
         <button className="rounded border border-violet-500 bg-violet-950 px-4 py-2 font-semibold" onClick={() => void fullscreen()}>Fullscreen</button>
         <button className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 font-semibold" onClick={onClose}>Close</button>
-      </header>
+      </header><style>{`.quote-option-viewer:fullscreen .quote-option-toolbar{display:none}`}</style>
 
       {presenting ? (
         <main className="flex-1 overflow-y-auto bg-zinc-100 p-3 sm:p-6">

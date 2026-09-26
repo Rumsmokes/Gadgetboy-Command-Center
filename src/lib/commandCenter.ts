@@ -160,7 +160,10 @@ function collectedPaymentAmount(payment: any) {
 }
 
 function paymentLedgerFor(record: any) {
-  return ['payments', 'paymentHistory', 'paymentLogs'].flatMap(key => Array.isArray(record?.[key]) ? record[key] : []);
+  if (Array.isArray(record?.payments)) return record.payments;
+  if (Array.isArray(record?.paymentHistory)) return record.paymentHistory;
+  if (Array.isArray(record?.paymentLogs)) return record.paymentLogs;
+  return [];
 }
 
 function paymentEventKey(record: CommandCenterRecord, payment: any) {
@@ -187,9 +190,7 @@ function collectedTodayPayments(records: CommandCenterRecord[], now: Date) {
         return true;
       })
       .map(collectedPaymentAmount);
-    return sameLocalDay(record.source?.checkoutDate || record.source?.paidAt, now)
-      ? [number(record.source?.amountPaid || record.total)]
-      : [];
+    return [];
   });
 }
 
