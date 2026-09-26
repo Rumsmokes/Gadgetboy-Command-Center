@@ -116,12 +116,13 @@ const PaymentPanel: React.FC<Props> = ({ workOrder, onChange, onCheckout, checko
           </div>
         )}
         <div>
-          <label className="block text-xs text-zinc-400">Amount paid</label>
-          <MoneyInput
-            className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1"
-            value={Number(workOrder.amountPaid || 0)}
-            onValueChange={(v) => onChange({ amountPaid: Number(v || 0) })}
-          />
+          <label className="block text-xs text-zinc-400">Historical amount paid</label>
+          <MoneyInput className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1" value={Number(workOrder.amountPaid || 0)} onValueChange={(v) => onChange({ amountPaid: Number(v || 0) })} />
+          <p className="mt-1 text-[10px] leading-tight text-amber-200">Use only for a payment taken on an earlier day. Use Checkout for any payment taken today.</p>
+        </div>
+        <div>
+          <label className="block text-xs text-zinc-400">Historical payment date</label>
+          <input type="date" className="w-full mt-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm" value={String((workOrder as any).historicalPaymentDate || '').slice(0, 10)} onChange={(event) => onChange({ historicalPaymentDate: event.target.value || null } as any)} />
         </div>
         <div>
           <div className="flex items-center justify-between">

@@ -62,7 +62,7 @@ function paymentDate(payment: any) {
 
 function fallbackPaymentDate(record: any) {
   for (const key of [
-    'checkoutDate', 'clientPickupDate', 'repairCompletionDate', 'completedAt',
+    'historicalPaymentDate', 'manualPaymentDate', 'checkoutDate', 'clientPickupDate', 'repairCompletionDate', 'completedAt',
     'closedAt', 'invoiceDate', 'saleDate', 'transactionDate', 'checkInAt', 'createdAt',
   ]) {
     const date = parseDate(record?.[key]);

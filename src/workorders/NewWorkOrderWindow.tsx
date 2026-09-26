@@ -103,7 +103,9 @@ function buildNormalizedCheckoutPayments(record: any) {
   const missing = round2(paid - recorded);
   if (missing <= 0.009) return existing;
 
-  const anchor = parseCheckoutPaymentDate(record?.checkoutDate)
+  const anchor = parseCheckoutPaymentDate(record?.historicalPaymentDate)
+    || parseCheckoutPaymentDate(record?.manualPaymentDate)
+    || parseCheckoutPaymentDate(record?.checkoutDate)
     || parseCheckoutPaymentDate(record?.clientPickupDate)
     || parseCheckoutPaymentDate(record?.repairCompletionDate)
     || parseCheckoutPaymentDate(record?.checkInAt)

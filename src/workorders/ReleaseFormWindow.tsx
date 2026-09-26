@@ -288,8 +288,8 @@ const ReleaseFormWindow: React.FC = () => {
 
         <div style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 6, padding: 12, background: '#fff' }}>
           <div style={{ fontWeight: 600, marginBottom: 10 }}>Acknowledgements</div>
-          <div style={{ fontSize: 12, color: '#444', lineHeight: 1.5, marginBottom: 54 }}>
-            By signing below, I authorize GadgetBoy Repair to perform the above repairs. I acknowledge that data backup is my responsibility and GadgetBoy is not liable for data loss. I agree to the terms and charges listed. Devices not picked up within 30 days of completion may incur storage fees.
+          <div style={{ fontSize: 9.25, color: '#444', lineHeight: 1.3, marginBottom: 18 }}>
+            By signing this form, you authorize GADGETBOY LLC to diagnose and/or repair your device. Repairs are performed to the best of our ability but are not guaranteed beyond the stated warranty. A diagnostic assessment will be completed prior to repairs, and a non-refundable diagnostic fee of up to $50 may be charged at drop-off. Additional costs will be communicated and must be approved before work continues. You are responsible for backing up all data; GADGETBOY LLC is not liable for data loss or incidental access to personal files. Certain repairs, including liquid or severe board damage, may not restore full functionality, and pre-existing issues may worsen. Customer-supplied or third-party parts are installed at your risk and are not warrantied. All repairs include a 90-day limited warranty from the completion date, covering only the specific repair performed. The warranty does not cover unrelated issues, software problems, physical or liquid damage, or devices tampered with after service. Full payment is due at pickup. Devices must be collected within 7 days of completion or will incur a $25/day storage fee. Any device left unclaimed 45 days after completion becomes the property of GADGETBOY LLC.
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 120, color: '#444' }}>Customer Signature</div>
