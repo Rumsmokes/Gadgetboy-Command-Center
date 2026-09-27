@@ -385,6 +385,8 @@ Deno.serve(async (req: Request) => {
       next_attempt_at: deliveryMode === "email" ? new Date().toISOString() : null,
       delivery_updated_at: new Date().toISOString(),
       created_by: userData.user.id,
+      technician_id: (body as any).__technician?.legacy_technician_id || null,
+      technician_name: (body as any).__technician?.legacy_technician_id ? `Technician #${(body as any).__technician.legacy_technician_id}` : null,
     };
     const { data: history, error: historyError } = await admin.from("client_update_history").insert(historyRow).select("*").single();
     if (historyError || !history) throw httpError(500, "The update was saved, but its history entry could not be created.");

@@ -534,6 +534,8 @@ const ClientUpdatePanel: React.FC<Props> = ({
       ? `Parts: $${Number(partsEstimate || 0).toFixed(2)}\nLabor: $${Number(laborEstimate || 0).toFixed(2)}\nEstimated total: $${approvalTotal}${notes.trim() ? `\n${notes.trim()}` : ''}`
       : notes;
     const extra = { estimatedDate, estimatedTime, notes: effectiveNotes };
+    const technicianPin = token ? window.prompt('Enter your 4-digit technician PIN to log this QR update:') || '' : '';
+    if (token && !/^\d{4}$/.test(technicianPin)) { setResult({ok:false,message:'A valid 4-digit technician PIN is required for QR updates.',deliveryStatus:'failed',statusSaved:false}); return; }
     setSavingKey(option.key);
     setResult(null);
     try {
