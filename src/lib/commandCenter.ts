@@ -52,11 +52,14 @@ export interface CommandCenterModel {
   productDeliveries: CommandCenterRecord[];
   collectedToday: number;
   paymentsToday: number;
+  collectedTodayTransactions: CollectedTodayTransaction[];
   cloverReconciliation: { date: string; cloverTotal: number | null; posTotal: number; variance: number; reconciled: boolean };
   globalAttention: Array<{ code: 'clover-variance'; label: string; amount: number }>;
   stages: Record<string, CommandCenterRecord[]>;
   today: { tasks: any[]; events: any[]; notes: any[]; consultations: CommandCenterRecord[]; deliveries: any[] };
 }
+
+export type CollectedTodayTransaction = { id:string; recordedAt:string; invoiceLabel:string; recordKind:CommandCenterKind; recordId:string|number; clientLabel:string; summary:string; paymentType:string; paymentMethod:string; amount:number };
 
 type CommandCenterInput = { customers?: any[]; technicians?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; calendarNotes?: any[]; purchaseOrders?: any[]; attentionSettings?: any; cloverDailyTotals?: Record<string, unknown>; now?: Date };
 
@@ -197,6 +200,11 @@ function collectedTodayPayments(records: CommandCenterRecord[], now: Date) {
   });
 }
 
+function collectedTodayTransactions(records: CommandCenterRecord[], now: Date): CollectedTodayTransaction[] {
+  const seen = new Set<string>();
+  return records.flatMap(record => paymentLedgerFor(record.source).filter((payment:any)=>sameLocalDay(paymentRecordedAt(payment),now)).filter((payment:any)=>{const key=paymentEventKey(record,payment);if(seen.has(key))return false;seen.add(key);return true;}).map((payment:any)=>({id:paymentEventKey(record,payment),recordedAt:text(paymentRecordedAt(payment)),invoiceLabel:record.kind==='workorder'?`WO #${record.id}`:`Sale #${record.id}`,recordKind:record.kind,recordId:record.id,clientLabel:record.customerName==='Walk-in'?'Quick checkout':record.customerName,summary:text(payment?.paymentType||payment?.type)||record.title,paymentType:text(payment?.paymentType||payment?.type),paymentMethod:text(payment?.paymentMethod||payment?.method||payment?.tenderType),amount:collectedPaymentAmount(payment)}))).sort((a,b)=>timestamp(b.recordedAt)-timestamp(a.recordedAt));
+}
+
 function outstandingBalance(record: any, total: number) {
   const payments = Array.isArray(record?.payments) ? record.payments : [];
   const ledgerPaid = payments.reduce((sum: number, payment: any) => sum + collectedPaymentAmount(payment), 0);
@@ -268,6 +276,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     return record.stage !== 'Parts';
   }).sort(compareRepairQueuePriority);
   const todayPayments = collectedTodayPayments([...workOrders, ...sales], now);
+  const todayTransactions = collectedTodayTransactions([...workOrders, ...sales], now);
   const todayKey = localDayKey(now);
   const collectedToday = Math.round(todayPayments.reduce((sum, amount) => sum + amount, 0) * 100) / 100;
   const rawCloverTotal = input.cloverDailyTotals?.[todayKey];
@@ -280,7 +289,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const occurrences = expandRecurringEvent(event, todayKey, todayKey);
     return occurrences.length ? occurrences : [];
   });
-  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday, paymentsToday: todayPayments.length, cloverReconciliation, globalAttention, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
+  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday, paymentsToday: todayPayments.length, collectedTodayTransactions: todayTransactions, cloverReconciliation, globalAttention, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
 }
 
 export function searchCommandCenterRecords(model: CommandCenterModel, query: string) {
