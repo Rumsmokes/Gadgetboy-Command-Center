@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import MoneyInput from '@/components/MoneyInput';
+import { DEFAULT_PART_MARKUP_PCT, derivePartVendorFromUrl, markedUpPartPrice, normalizePartOrderUrl, scrapePartUrl } from '@/lib/partOrdering';
+import { supplierTitleForItem } from '@/lib/supplierItemTitle';
 import type { WorkOrderItemRow } from './ItemsTable';
 
 type ItemType = 'both' | 'part' | 'labor' | 'fee';
@@ -31,6 +33,7 @@ export default function WorkOrderItemDialog({ item, onClose, onSave }: {
   const [salvaged, setSalvaged] = useState(!!item.salvagedPart);
   const [addToCart, setAddToCart] = useState(item.requiresOrder !== false);
   const [error, setError] = useState('');
+  const [scrapingOrderUrl, setScrapingOrderUrl] = useState(false);
 
   useEffect(() => { setDraft({ ...item }); setItemType(initialItemType(item)); setSource(initialSource(item)); setSalvaged(!!item.salvagedPart); setAddToCart(item.requiresOrder !== false); setError(''); }, [item]);
 
@@ -38,6 +41,27 @@ export default function WorkOrderItemDialog({ item, onClose, onSave }: {
   const hasLabor = itemType === 'both' || itemType === 'labor';
   const clientPrice = useMemo(() => itemType === 'fee' ? Number(draft.labor || 0) : Number(draft.parts || 0) + Number(draft.labor || 0), [draft.labor, draft.parts, itemType]);
   const update = (patch: Partial<WorkOrderItemRow>) => setDraft(current => ({ ...current, ...patch }));
+
+  async function autofillOrderDetails(value: string) {
+    const orderSourceUrl = normalizePartOrderUrl(value);
+    if (!orderSourceUrl) return;
+    update({ orderSourceUrl, requiresOrder: true, orderStatus: 'needed' });
+    setScrapingOrderUrl(true);
+    setError('');
+    try {
+      const meta = await scrapePartUrl(orderSourceUrl);
+      setDraft(current => {
+        const internalCost = typeof meta.price === 'number' ? meta.price : current.internalCost;
+        const markupPct = current.markupPct ?? DEFAULT_PART_MARKUP_PCT;
+        const suggestedParts = markedUpPartPrice(internalCost, markupPct);
+        const distributor = current.distributor || meta.vendor || derivePartVendorFromUrl(orderSourceUrl);
+        return { ...current, repair: supplierTitleForItem(current.repair, meta.title), orderSourceUrl, distributor, partSource: current.partSource || distributor, internalCost, markupPct, parts: suggestedParts ?? current.parts, requiresOrder: true, orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed' };
+      });
+      if (!meta.ok && meta.error) setError(`URL saved, but supplier details could not be read: ${meta.error}`);
+    } catch (fetchError: any) {
+      setError(`URL saved, but supplier details could not be read: ${fetchError?.message || 'Unknown error'}`);
+    } finally { setScrapingOrderUrl(false); }
+  }
 
   async function save() {
     if (!String(draft.repair || '').trim()) { setError('Enter a repair or item description.'); return; }
@@ -91,7 +115,7 @@ export default function WorkOrderItemDialog({ item, onClose, onSave }: {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{([['stock', 'Shop inventory'], ['order', 'Order from supplier'], ['client', 'Client provided']] as [Source, string][]).map(([value, label]) => <button key={value} type="button" onClick={() => setSource(value)} className={`rounded-lg border px-3 py-2.5 text-left text-sm ${source === value ? 'border-violet-400 bg-violet-950/50 text-white' : 'border-zinc-700 bg-zinc-800 text-zinc-300'}`}>{label}</button>)}</div>
           <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950/50 p-4">
             {source === 'stock' ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><label className={salvaged ? 'opacity-35' : ''}><span className="text-xs font-semibold text-zinc-300">Our part cost</span><MoneyInput disabled={salvaged} className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.internalCost} onValueChange={value => update({ internalCost: value == null ? undefined : Number(value) })} allowEmpty /></label><label className={salvaged ? 'sm:col-span-2 opacity-35' : 'sm:col-span-2'}><span className="text-xs font-semibold text-zinc-300">Inventory item</span><input disabled={salvaged} className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.inventoryItemName || ''} onChange={event => update({ inventoryItemName: event.target.value })} placeholder="Select exact inventory item…" /></label><label><span className="text-xs font-semibold text-zinc-300">Quantity used <b className="text-pink-300">Required</b></span><input type="number" min="1" className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.quantity || 1} onChange={event => update({ quantity: Math.max(1, Number(event.target.value || 1)) })} /></label><label className="sm:col-span-3 flex cursor-pointer items-center gap-3 rounded-lg border border-violet-500/60 bg-violet-950/40 px-3 py-2.5 text-sm"><input type="checkbox" checked={salvaged} onChange={event => setSalvaged(event.target.checked)} /><span><strong>Salvaged spare part</strong><small className="ml-2 text-zinc-300">Cost and inventory item are not required; only quantity used is.</small></span></label></div> : null}
-            {source === 'order' ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><label><span className="text-xs font-semibold text-zinc-300">Our part cost <b className="text-pink-300">Required</b></span><MoneyInput className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.internalCost} onValueChange={value => update({ internalCost: value == null ? undefined : Number(value) })} allowEmpty /></label><label><span className="text-xs font-semibold text-zinc-300">Supplier <b className="text-pink-300">Required</b></span><input className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.distributor || ''} onChange={event => update({ distributor: event.target.value })} /></label><label className="sm:col-span-3 flex cursor-pointer items-center gap-3 rounded-lg border border-amber-500/60 bg-amber-950/30 px-3 py-2.5 text-sm"><input type="checkbox" checked={addToCart} onChange={event => setAddToCart(event.target.checked)} /><span><strong>Add to EOD cart</strong><small className="ml-2 text-zinc-300">EOD checkout records the actual order date and ETA.</small></span></label><label className="sm:col-span-3"><span className="text-xs font-semibold text-zinc-300">Order URL <b className="text-pink-300">Required when added to cart</b></span><input type="url" className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.orderSourceUrl || ''} onChange={event => update({ orderSourceUrl: event.target.value })} placeholder="Paste exact product page" /></label></div> : null}
+            {source === 'order' ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><label><span className="text-xs font-semibold text-zinc-300">Our part cost <b className="text-pink-300">Required</b></span><MoneyInput className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.internalCost} onValueChange={value => update({ internalCost: value == null ? undefined : Number(value) })} allowEmpty /></label><label><span className="text-xs font-semibold text-zinc-300">Supplier <b className="text-pink-300">Required</b></span><input className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.distributor || ''} onChange={event => update({ distributor: event.target.value })} /></label><label className="sm:col-span-3 flex cursor-pointer items-center gap-3 rounded-lg border border-amber-500/60 bg-amber-950/30 px-3 py-2.5 text-sm"><input type="checkbox" checked={addToCart} onChange={event => setAddToCart(event.target.checked)} /><span><strong>Add to EOD cart</strong><small className="ml-2 text-zinc-300">EOD checkout records the actual order date and ETA.</small></span></label><label className="sm:col-span-3"><span className="text-xs font-semibold text-zinc-300">Order URL <b className="text-pink-300">Required when added to cart</b>{scrapingOrderUrl ? <em className="ml-2 text-sky-300">Checking supplier…</em> : null}</span><input type="url" className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.orderSourceUrl || ''} onChange={event => update({ orderSourceUrl: event.target.value })} onBlur={event => { if (event.currentTarget.value.trim()) void autofillOrderDetails(event.currentTarget.value); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void autofillOrderDetails(event.currentTarget.value); } }} placeholder="Paste exact product page" /></label></div> : null}
             {source === 'client' ? <label><span className="text-xs font-semibold text-zinc-300">Client-provided part note <b className="text-pink-300">Required</b></span><input className="mt-1.5 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5" value={draft.note || ''} onChange={event => update({ note: event.target.value })} placeholder="Describe exact part received" /></label> : null}
           </div>
         </section> : null}

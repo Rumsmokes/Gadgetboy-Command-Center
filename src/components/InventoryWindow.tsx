@@ -31,6 +31,7 @@ type InventoryItem = {
   repairType?: string;
   partCategory?: string;
   condition?: string;
+  salvagedPart?: boolean;
   price?: number;
   internalCost?: number;
   markupPct?: number | string;
@@ -95,7 +96,7 @@ const INVENTORY_PREVIEW_PARENT: InventoryItem = {
 
 const INVENTORY_PREVIEW_VARIANTS: InventoryItem[] = [
   { ...INVENTORY_PREVIEW_PART, id: 99001, itemDescription: 'iPhone 7 Screen', category: 'Phone', repairType: 'Screen Repair', partCategory: 'Screen', parentProductId: 99000, variantAttributes: { Color: 'Black', Quality: 'Premium' }, distributorSku: 'IP7-SCR-BLK-P', stockCount: 5 },
-  { ...INVENTORY_PREVIEW_PART, id: 99002, itemDescription: 'iPhone 7 Screen', category: 'Phone', repairType: 'Screen Repair', partCategory: 'Screen', parentProductId: 99000, variantAttributes: { Color: 'White', Quality: 'Standard' }, distributorSku: 'IP7-SCR-WHT-S', stockCount: 2 },
+  { ...INVENTORY_PREVIEW_PART, id: 99002, itemDescription: 'iPhone 7 Screen', category: 'Phone', repairType: 'Screen Repair', partCategory: 'Screen', parentProductId: 99000, variantAttributes: { Color: 'White', Quality: 'Standard' }, distributorSku: 'IP7-SCR-WHT-S', stockCount: 2, condition: 'Used', salvagedPart: true, internalCost: 0, reorderUrlTemplate: '' },
 ];
 
 function blankItem(mode: InventoryMode): InventoryItem {
@@ -179,6 +180,7 @@ export default function InventoryWindow() {
   const [expandedDeviceGroups, setExpandedDeviceGroups] = useState<Set<string>>(() => new Set());
   const [expandedDeviceCategories, setExpandedDeviceCategories] = useState<Set<string>>(() => new Set());
   const [editing, setEditing] = useState<InventoryItem>(() => blankItem('parts'));
+  const [editingDetails, setEditingDetails] = useState(true);
   const [editingOrderUrl, setEditingOrderUrl] = useState(false);
   const [acquisitionSource, setAcquisitionSource] = useState<'online' | 'local'>('local');
   const [saving, setSaving] = useState(false);
@@ -288,6 +290,7 @@ export default function InventoryWindow() {
     }
     setSelectedId(undefined);
     setEditing(applyInventoryDefaults(blankItem(mode), inventoryDefaults));
+    setEditingDetails(true);
     setSearch('');
     setDeviceFilter('');
     setFiltersOpen(false);
@@ -423,6 +426,7 @@ export default function InventoryWindow() {
     ].map((value) => String(value || '').trim()).filter(Boolean)));
     setSelectedId(item.id);
     setEditing({ ...blankItem(mode), ...item, associatedDevices, markupPct: item.markupPct ?? DEFAULT_MARKUP_PCT });
+    setEditingDetails(false);
     setEditingOrderUrl(!item.reorderUrlTemplate);
     setAcquisitionSource(String(item.reorderUrlTemplate || '').trim() ? 'online' : 'local');
     lastScrapedUrlRef.current = String(item.reorderUrlTemplate || '');
@@ -915,7 +919,27 @@ export default function InventoryWindow() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {selectedId && !editingDetails ? <section className="rounded-xl border border-zinc-700 bg-[#111116] p-4" aria-label="Inventory record">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-800 pb-4">
+                <div><div className="text-xs font-bold uppercase tracking-[0.18em] text-[#39ff14]">Inventory record</div><h3 className="mt-1 text-xl font-bold text-white">{editing.itemDescription || 'Unnamed item'}</h3><p className="mt-1 text-sm text-zinc-400">{editing.category || 'Uncategorized'} {editing.repairType ? `· ${editing.repairType}` : ''}</p></div>
+                <button type="button" onClick={() => setEditingDetails(true)} className="rounded-lg border border-blue-400 bg-blue-500/15 px-4 py-2 text-sm font-bold text-blue-100">Edit</button>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"><div className="text-[11px] uppercase tracking-wide text-zinc-500">Stock</div><strong className="mt-1 block text-lg text-white">{editing.trackStock ? editing.stockCount ?? 0 : 'Not tracked'}</strong><div className="text-xs text-zinc-400">{editing.lowStockThreshold ?? 0} minimum</div></div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"><div className="text-[11px] uppercase tracking-wide text-zinc-500">Source</div><strong className="mt-1 block text-lg text-white">{editing.salvagedPart ? 'Salvaged spare' : editing.reorderUrlTemplate ? 'Ordered online' : 'Locally acquired'}</strong><div className="truncate text-xs text-zinc-400">{editing.distributor || 'No vendor recorded'}</div></div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"><div className="text-[11px] uppercase tracking-wide text-zinc-500">Model / SKU</div><strong className="mt-1 block truncate text-lg text-white">{editing.distributorSku || 'No SKU'}</strong><div className="truncate text-xs text-zinc-400">{(editing.associatedDevices || []).join(', ') || editing.deviceModel || 'No linked model'}</div></div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"><div className="text-[11px] uppercase tracking-wide text-zinc-500">Cost</div><strong className="mt-1 block text-lg text-white">{editing.salvagedPart ? '—' : money(editing.internalCost)}</strong><div className="text-xs text-zinc-400">Client price {money(editing.price)}</div></div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"><div className="text-[11px] uppercase tracking-wide text-zinc-500">Condition</div><strong className="mt-1 block text-lg text-white">{editing.salvagedPart ? 'Salvaged' : editing.condition || 'New'}</strong><div className="text-xs text-zinc-400">{editing.partCategory || 'Part'}</div></div>
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3"><div className="text-[11px] uppercase tracking-wide text-zinc-500">MOQ</div><strong className="mt-1 block text-lg text-white">{editing.reorderQty || 1}</strong><div className="text-xs text-zinc-400">Reorder quantity</div></div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {editing.reorderUrlTemplate ? <button type="button" onClick={() => openReorder(editing)} className="rounded-lg border border-red-400 bg-red-500/15 px-3 py-2 text-sm font-bold text-red-100">Order URL</button> : null}
+                {!editing.salvagedPart && editing.reorderUrlTemplate ? <button type="button" onClick={() => { setShowCartAdder(true); setCartQuantity(inventoryReorderQuantity(editing)); }} className="rounded-lg border border-[#39ff14] bg-[#39ff14]/10 px-3 py-2 text-sm font-bold text-[#39ff14]">Add MOQ to Cart</button> : null}
+                {!editing.isParentPart ? <button type="button" onClick={() => setLabelItem({ ...editing, id: selectedId })} className="rounded-lg border border-violet-400 bg-violet-500/10 px-3 py-2 text-sm font-bold text-violet-100">Print Label</button> : null}
+              </div>
+            </section> : null}
+
+            <div className={selectedId && !editingDetails ? 'hidden' : 'grid grid-cols-1 gap-3 md:grid-cols-2'}>
               <div className="md:col-span-2 rounded-xl border border-purple-400/30 bg-purple-500/5 px-4 py-3"><span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-purple-500 text-xs font-black">1</span><strong>Identify and source the item</strong><span className="ml-2 text-xs text-zinc-500">Name, URL, vendor, and parent family</span></div>
               {!editing.isParentPart ? <div className="rounded border border-[#BC13FE]/40 bg-[#BC13FE]/5 p-3 md:col-span-2">
                 <label className="block">
@@ -1271,7 +1295,7 @@ export default function InventoryWindow() {
               </label>
             </div>
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <div className={selectedId && !editingDetails ? 'hidden' : 'mt-4 flex flex-wrap justify-end gap-2'}>
               {selectedId && editing.isParentPart ? <button type="button" onClick={() => startVariant({ ...editing, id: selectedId })} className="rounded border border-[#BC13FE] bg-[#BC13FE]/10 px-4 py-2 text-sm font-semibold text-fuchsia-200">Add Variant</button> : null}
               {selectedId && !editing.isParentPart ? <button type="button" onClick={duplicateVariant} className="rounded border border-[#BC13FE] bg-[#BC13FE]/10 px-4 py-2 text-sm font-semibold text-fuchsia-200">Duplicate Variant</button> : null}
               {selectedId && !editing.isParentPart ? <button type="button" onClick={() => setLabelItem({ ...editing, id: selectedId })} className="rounded border border-[#39FF14] bg-[#39FF14]/10 px-4 py-2 text-sm font-semibold text-[#39FF14]">Print Label</button> : null}
