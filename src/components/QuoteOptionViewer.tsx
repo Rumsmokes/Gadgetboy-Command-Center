@@ -6,24 +6,31 @@ export default function QuoteOptionViewer({ onClose }: { onClose: () => void }) 
   const [images, setImages] = useState<OptionImage[]>([]);
   const [presenting, setPresenting] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const imagesRef = useRef<OptionImage[]>([]);
+  const [importError, setImportError] = useState('');
 
-  useEffect(() => { imagesRef.current = images; }, [images]);
-  useEffect(() => () => {
-    for (const image of imagesRef.current) URL.revokeObjectURL(image.url);
-  }, []);
+  const readImage = (file: File) => new Promise<OptionImage>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.onload = () => {
+      const url = String(reader.result || '');
+      if (!url.startsWith('data:image/')) { reject(new Error(`${file.name} is not a supported image.`)); return; }
+      resolve({ id: crypto.randomUUID(), name: file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '), url });
+    };
+    reader.readAsDataURL(file);
+  });
 
-  const addFiles = (files: FileList | File[]) => {
-    const next = Array.from(files).filter(file => file.type.startsWith('image/')).map(file => ({
-      id: crypto.randomUUID(),
-      name: file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '),
-      url: URL.createObjectURL(file),
-    }));
+  const addFiles = async (files: FileList | File[]) => {
+    const supported = Array.from(files).filter(file => file.type.startsWith('image/'));
+    if (!supported.length) { setImportError('Choose an image file (PNG, JPG, WEBP, or similar).'); return; }
+    setImportError('');
+    const results = await Promise.allSettled(supported.map(readImage));
+    const next = results.filter((result): result is PromiseFulfilledResult<OptionImage> => result.status === 'fulfilled').map(result => result.value);
     if (next.length) setImages(current => [...current, ...next]);
+    const failed = results.filter(result => result.status === 'rejected');
+    if (failed.length) setImportError(failed.map(result => result.status === 'rejected' ? result.reason?.message || 'An image could not be read.' : '').join(' '));
   };
   const remove = (id: string) => setImages(current => {
     const target = current.find(image => image.id === id);
-    if (target) URL.revokeObjectURL(target.url);
     return current.filter(image => image.id !== id);
   });
   const move = (index: number, direction: -1 | 1) => setImages(current => {
@@ -78,6 +85,7 @@ export default function QuoteOptionViewer({ onClose }: { onClose: () => void }) 
           >
             <strong className="text-lg">Drop images here or choose files</strong>
             <span className="mt-1 text-sm text-zinc-400">Select several case designs or product options at once.</span>
+            {importError ? <span role="alert" className="mt-2 text-sm text-red-200">{importError}</span> : null}
             <input className="sr-only" type="file" accept="image/*" multiple onChange={event => { if (event.target.files) addFiles(event.target.files); event.currentTarget.value = ''; }} />
           </label>
           {images.length ? (

@@ -14,6 +14,6 @@ assert.match(options, /onDrop=/, 'Option Viewer must accept dragged images.');
 assert.match(options, /accept="image\/\*"/, 'Option Viewer must accept uploaded image files.');
 assert.match(options, /requestFullscreen/, 'Option Viewer presentation must support fullscreen.');
 assert.match(options, />Show Preview<\/button>/, 'Option Viewer must provide its own presentation action.');
-assert.match(options, /URL\.createObjectURL/, 'Option Viewer must keep selected image media local instead of uploading it.');
+assert.match(options, /reader\.readAsDataURL\(file\)/, 'Option Viewer must retain selected image media locally for Electron-safe previewing.');
 
 console.log('Quote customer presentation and Option Viewer checks passed.');

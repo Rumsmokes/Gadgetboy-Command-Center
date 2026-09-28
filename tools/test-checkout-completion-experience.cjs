@@ -13,7 +13,7 @@ assert.match(main, /function testEnvironmentDataRoot\(\).*GB POS Test Environmen
 assert.match(main, /if \(IS_TEST_ENVIRONMENT\) return testEnvironmentDataRoot\(\);/, 'test mode must never inherit the production data location');
 assert.match(main, /open-release-form[\s\S]*autoPrint[\s\S]*silent[\s\S]*scheduleSilentPrint/s, 'release-form IPC must support silent default-printer output');
 assert.match(main, /open-product-form[\s\S]*autoPrint[\s\S]*silent[\s\S]*scheduleSilentPrint/s, 'sale-form IPC must support silent default-printer output');
-assert.match(workOrder, /openReleaseForm\?\.\(\{\s*workOrderId: effectiveId,\s*autoPrint: true,\s*silent: true/s, 'first qualifying work-order checkout must silently print the release form');
+assert.match(workOrder, /openReleaseForm\?\.\(\{ \.\.\.nextWo, id: effectiveId, workOrderId: effectiveId, autoPrint: true, silent: true/s, 'first qualifying work-order checkout must silently print the complete release-form payload');
 assert.match(sale, /printSaleReleaseForm\([\s\S]*autoPrint: true,[\s\S]*silent: true/s, 'first qualifying sale checkout must silently print the sale form');
 assert.match(emails, /Leave us a Review/, 'completion emails must include a review action');
 assert.match(emails, /linktr\.ee\/gadgetboysc/, 'completion emails must include the GadgetBoy Linktree action');
