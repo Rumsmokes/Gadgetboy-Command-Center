@@ -65,6 +65,18 @@ assert.equal(normalized.length, 1, 'Legacy paid tickets need a synthetic payment
 assert.equal(normalized[0].applied, 50);
 assert.equal(buildReportingLedger([legacy])[0].laborCharged, 50, 'Legacy partial payments must remain reportable.');
 
+const singletonPayment = {
+  id: 103,
+  kind: 'repair',
+  laborCost: 25,
+  amountPaid: 25,
+  payments: { applied: 25, amount: 25, appliedLabor: 25, paymentType: 'Card', at: '2026-09-28T14:30:00.000Z' },
+};
+const singletonLedger = buildReportingLedger([singletonPayment]);
+assert.equal(singletonLedger.length, 1, 'A legacy singleton payment entry must become one ledger event.');
+assert.equal(singletonLedger[0].collected, 25, 'A remaining labor checkout stored as one payment object must count in daily collection.');
+assert.equal(singletonLedger[0].date.toISOString(), '2026-09-28T14:30:00.000Z', 'A singleton payment must retain its checkout timestamp.');
+
 const partialSale = {
   id: 201,
   kind: 'sale',

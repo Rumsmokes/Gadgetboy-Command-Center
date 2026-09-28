@@ -5,6 +5,7 @@ import { attentionReasonsForWorkOrder, workOrderAgeDays, type AttentionReason } 
 import { buildRepairStatistics, repairPatternKey, type RepairStatistics } from './repairStatistics';
 import { productDeliveryFor } from './productDelivery';
 import { deriveOperationalStage, isOperationallyTerminal } from './repairWorkflow';
+import { collectReportingPayments } from './reportingAccounting';
 
 export type CommandCenterKind = 'workorder' | 'sale' | 'consultation';
 
@@ -166,10 +167,7 @@ function collectedPaymentAmount(payment: any) {
 }
 
 function paymentLedgerFor(record: any) {
-  if (Array.isArray(record?.payments)) return record.payments;
-  if (Array.isArray(record?.paymentHistory)) return record.paymentHistory;
-  if (Array.isArray(record?.paymentLogs)) return record.paymentLogs;
-  return [];
+  return collectReportingPayments(record);
 }
 
 function paymentEventKey(record: CommandCenterRecord, payment: any) {

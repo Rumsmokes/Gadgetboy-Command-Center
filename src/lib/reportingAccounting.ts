@@ -71,14 +71,25 @@ function fallbackPaymentDate(record: any) {
   return null;
 }
 
+function paymentRows(value: any): any[] {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value && typeof value === 'object') return [value];
+  if (typeof value === 'string') {
+    try { return paymentRows(JSON.parse(value)); } catch { return []; }
+  }
+  return [];
+}
+
+export function recordedPaymentRows(record: any): any[] {
+  for (const value of [record?.payments, record?.paymentHistory, record?.paymentLogs]) {
+    const rows = paymentRows(value);
+    if (rows.length) return rows;
+  }
+  return [];
+}
+
 export function collectReportingPayments(record: any) {
-  const existing = Array.isArray(record?.payments)
-    ? [...record.payments]
-    : Array.isArray(record?.paymentHistory)
-      ? [...record.paymentHistory]
-      : Array.isArray(record?.paymentLogs)
-        ? [...record.paymentLogs]
-        : [];
+  const existing = recordedPaymentRows(record);
   const amountPaid = positive(record?.amountPaid ?? record?.paid ?? record?.totalPaid);
   const recorded = roundMoney(existing.reduce((sum: number, payment: any) => sum + paymentAmount(payment), 0));
   const missing = roundMoney(amountPaid - recorded);

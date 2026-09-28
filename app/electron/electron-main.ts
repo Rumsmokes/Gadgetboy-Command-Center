@@ -9355,14 +9355,19 @@ function reportPaymentFallbackDate(record: any): Date | null {
   return null;
 }
 
+function reportPaymentRows(value: any): any[] {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value && typeof value === 'object') return [value];
+  if (typeof value === 'string') {
+    try { return reportPaymentRows(JSON.parse(value)); } catch { return []; }
+  }
+  return [];
+}
+
 function reportCollectPayments(record: any) {
-  const existing = Array.isArray(record?.payments)
-    ? [...record.payments]
-    : Array.isArray(record?.paymentHistory)
-      ? [...record.paymentHistory]
-      : Array.isArray(record?.paymentLogs)
-        ? [...record.paymentLogs]
-        : [];
+  const existing = [record?.payments, record?.paymentHistory, record?.paymentLogs]
+    .map(reportPaymentRows)
+    .find(rows => rows.length) || [];
   const totals = reportResolveTotals(record);
   const recorded = reportRound2(existing.reduce((sum: number, payment: any) => sum + reportPaymentAppliedAmount(payment), 0));
   const missing = reportRound2((Number(totals.paid || 0) || 0) - recorded);
