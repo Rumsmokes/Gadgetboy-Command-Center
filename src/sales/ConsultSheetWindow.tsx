@@ -36,7 +36,7 @@ function getFlags() {
 const ConsultSheetWindow: React.FC = () => {
   const data = useMemo(() => getPayload() || {}, []);
   const flags = useMemo(() => getFlags(), []);
-  const consultationRequiresQr = Number((data as any).eventId || 0) > 0;
+  const consultationRequiresQr = Number((data as any).eventId || (data as any).id || 0) > 0;
 
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [qrSrc, setQrSrc] = useState<string>('');
@@ -56,29 +56,26 @@ const ConsultSheetWindow: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const eventId = Number((data as any).eventId || 0) || 0;
-    if (!eventId) return;
     let alive = true;
     void (async () => {
+      let eventId = Number((data as any).eventId || 0) || 0;
+      if (!eventId && Number((data as any).id || 0) > 0) {
+        try {
+          const events = await (window as any).api?.dbGet?.('calendarEvents');
+          const match = Array.isArray(events) ? events.find((event: any) => Number(event?.saleId || 0) === Number((data as any).id || 0) && String(event?.category || '').toLowerCase() === 'consultation') : null;
+          eventId = Number(match?.id || 0) || 0;
+        } catch {}
+      }
       try {
-        const result: any = await Promise.race([
-          (window as any).api?.qrGetStatusUrl?.('consult', eventId),
-          new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000)),
-        ]);
+        if (!eventId) return;
+        const result: any = await Promise.race([(window as any).api?.qrGetStatusUrl?.('consult', eventId), new Promise((_, reject) => window.setTimeout(() => reject(new Error('QR status URL timed out.')), 5000))]);
         const url = String(result?.url || '').trim();
         if (!result?.ok || !url) return;
-        const value = await QRCode.toDataURL(url, {
-          width: 176,
-          margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-          errorCorrectionLevel: 'M',
-        });
+        const value = await QRCode.toDataURL(url, { width: 176, margin: 1, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' });
         if (alive && value.startsWith('data:')) setQrSrc(value);
       } catch {
-        // The sheet remains printable if the consultation has not synced yet.
-      } finally {
-        if (alive) setQrResolved(true);
-      }
+        // Never silently print a consultation sheet without its required QR.
+      } finally { if (alive) setQrResolved(true); }
     })();
     return () => { alive = false; };
   }, [data]);
@@ -164,6 +161,7 @@ const ConsultSheetWindow: React.FC = () => {
     return () => { cancelled = true; };
   }, [flags.autoPrint, flags.silent, logoSrc, qrResolved, qrSrc, consultationRequiresQr]);
 
+  const qrPending = consultationRequiresQr && (!qrResolved || !qrSrc);
   const customerName = String((data as any).customerName || '').trim();
   const phoneRaw = String((data as any).customerPhone || '').trim();
   const phone = formatPhone(phoneRaw) || phoneRaw;
@@ -202,7 +200,7 @@ const ConsultSheetWindow: React.FC = () => {
       `}</style>
 
       <div className="toolbar">
-        <button className="btn" onClick={() => { try { window.focus(); window.print(); } catch {} }}>Print</button>
+        <button className="btn" disabled={qrPending} title={qrPending ? 'Generating the consultation update QR before printing.' : 'Print'} style={qrPending ? { opacity: .55, cursor: 'wait' } : undefined} onClick={() => { try { window.focus(); window.print(); } catch {} }}>{qrPending ? 'Preparing QR…' : 'Print'}</button>
         <button className="btn2" onClick={() => { try { window.close(); } catch {} }}>Close</button>
       </div>
 

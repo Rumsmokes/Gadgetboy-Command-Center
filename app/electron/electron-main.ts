@@ -7045,11 +7045,16 @@ ipcMain.handle('open-product-form', async (event: any, payload: any) => {
   const encoded = encodeURIComponent(JSON.stringify(payload || {}));
   const flags = `${autoPrint ? '&autoPrint=1' : ''}${silent ? '&silent=1' : ''}`;
   const url = isDev ? `${DEV_SERVER_URL}/?productForm=${encoded}${flags}` : `file://${path.join(app.getAppPath(), 'dist', 'index.html')}?productForm=${encoded}${flags}`;
-  if (autoPrint && silent) {
-    const start = scheduleSilentPrint(child, { delayMs: 700, onDone: () => { if (autoCloseMs) setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs); } });
-    child.webContents.once('did-finish-load', start);
-  }
   child.loadURL(url);
+  if (autoPrint && silent) {
+    const startSilentPrint = scheduleSilentPrint(child, { delayMs: 40, onDone: () => { if (autoCloseMs) setTimeout(() => { try { if (!child.isDestroyed()) child.close(); } catch {} }, autoCloseMs); } });
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => { try { clearTimeout(fallbackTimer); } catch {} try { ipcMain.removeListener('product-form:ready', ready); } catch {} };
+    const ready = (readyEvent: any) => { if (readyEvent?.sender !== child.webContents) return; cleanup(); startSilentPrint(); };
+    child.webContents.once('did-finish-load', () => { fallbackTimer = setTimeout(() => { try { if (!child.isDestroyed()) showWindowFast(child, () => { centerWindow(child); }); } catch {} }, SILENT_PRINT_RENDERER_READY_TIMEOUT_MS); });
+    ipcMain.on('product-form:ready', ready);
+    child.once('closed', cleanup);
+  }
   return { ok: true };
 });
 

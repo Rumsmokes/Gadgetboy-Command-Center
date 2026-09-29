@@ -50,4 +50,12 @@ assert.equal(
   'Manual and silent consultation printing must not signal readiness without the required QR image.',
 );
 
+const productForm = read('src/sales/ProductFormWindow.tsx');
+assert.match(productForm, /qrGetStatusUrl\?\.\('sale', saleId\)/,
+  'Automatic sales-form printing must request a sale-specific status QR.');
+assert.match(productForm, /alt=\"Sales update QR\"/,
+  'Automatic sales forms must render their technician update QR.');
+assert.match(productForm, /saleRequiresQr && !qrSrc/,
+  'Automatic sales printing must wait until its required QR has rendered.');
+
 console.log('Print QR readiness checks passed.');

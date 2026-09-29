@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
+import QRCode from 'qrcode';
 
 function getPayload() {
   try {
@@ -17,6 +18,11 @@ function getPayload() {
   } catch { return null; }
 }
 
+function getFlags() {
+  try { const p = new URLSearchParams(window.location.search); return { autoPrint: p.get('autoPrint') === '1' || p.get('autoPrint') === 'true', silent: p.get('silent') === '1' || p.get('silent') === 'true' }; }
+  catch { return { autoPrint: false, silent: false }; }
+}
+
 const Row: React.FC<{ label: string; value?: any }> = ({ label, value }) => (
   <div style={{ display: 'flex', marginBottom: 6 }}>
     <div style={{ width: 180, color: '#444' }}>{label}</div>
@@ -26,10 +32,16 @@ const Row: React.FC<{ label: string; value?: any }> = ({ label, value }) => (
 
 const ProductFormWindow: React.FC = () => {
   const data = useMemo(() => getPayload() || {}, []);
+  const flags = useMemo(() => getFlags(), []);
+  const saleId = Number((data as any).id || 0) || 0;
+  const saleRequiresQr = saleId > 0;
 
   const [logoSrc, setLogoSrc] = useState('');
+  const [qrSrc, setQrSrc] = useState('');
+  const [qrResolved, setQrResolved] = useState(() => !saleRequiresQr);
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
+  const qrImgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -42,66 +54,50 @@ const ProductFormWindow: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (didAutoPrintRef.current) return;
-
-    let cancelled = false;
-
-    const doPrint = () => {
-      if (cancelled || didAutoPrintRef.current) return;
-      didAutoPrintRef.current = true;
-      try { window.focus(); window.print(); } catch {}
-    };
-
-    const signalReady = async () => {
-      // Wait for the logo image to finish decoding
-      const img = logoImgRef.current;
-      if (img && !img.complete) {
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          const finish = () => {
-            if (settled) return;
-            settled = true;
-            try { img.removeEventListener('load', finish); } catch {}
-            try { img.removeEventListener('error', finish); } catch {}
-            resolve();
-          };
-          try { img.addEventListener('load', finish, { once: true }); } catch {}
-          try { img.addEventListener('error', finish, { once: true }); } catch {}
-          // Safety valve: don't wait more than 800ms for the logo
-          window.setTimeout(finish, 800);
-        });
-      }
-      // Wait for all fonts to be ready
+    if (!saleRequiresQr) return;
+    let alive = true;
+    void (async () => {
       try {
-        const fontSet = (document as any).fonts;
-        if (fontSet?.ready) await fontSet.ready;
-      } catch {}
-      // Two rAFs to ensure paint is complete
-      await new Promise<void>((resolve) => {
-        window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => resolve());
-        });
-      });
-      doPrint();
-    };
+        let result: any = null;
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          try {
+            result = await Promise.race([(window as any).api?.qrGetStatusUrl?.('sale', saleId), new Promise((_, reject) => window.setTimeout(() => reject(new Error('Sales QR status URL timed out.')), 5000))]);
+            if (result?.ok && String(result?.url || '').trim()) break;
+          } catch {}
+          if (attempt < 3) await new Promise<void>((resolve) => window.setTimeout(resolve, attempt * 350));
+        }
+        const url = String(result?.url || '').trim();
+        if (result?.ok && url) {
+          const value = await QRCode.toDataURL(url, { width: 176, margin: 1, color: { dark: '#000000', light: '#ffffff' }, errorCorrectionLevel: 'M' });
+          if (alive && value.startsWith('data:')) setQrSrc(value);
+        }
+      } finally { if (alive) setQrResolved(true); }
+    })();
+    return () => { alive = false; };
+  }, [saleId, saleRequiresQr]);
 
-    // If logoSrc is already loaded, signal ready immediately.
-    // Otherwise wait up to 1500ms for the data URL to arrive, then signal anyway.
-    if (logoSrc) {
-      void signalReady();
-    } else {
-      const fallback = window.setTimeout(() => {
-        if (!cancelled) void signalReady();
-      }, 1500);
-      return () => {
-        cancelled = true;
-        window.clearTimeout(fallback);
-      };
-    }
+  useEffect(() => {
+    if (!flags.autoPrint || flags.silent || didAutoPrintRef.current) return;
+    if (!qrResolved || (saleRequiresQr && !qrSrc)) return;
+    const timer = window.setTimeout(() => { if (!didAutoPrintRef.current) { didAutoPrintRef.current = true; try { window.focus(); window.print(); } catch {} } }, 120);
+    return () => window.clearTimeout(timer);
+  }, [flags.autoPrint, flags.silent, qrResolved, saleRequiresQr, qrSrc]);
 
+  useEffect(() => {
+    if (!flags.autoPrint || !flags.silent) return;
+    if (!qrResolved || (saleRequiresQr && !qrSrc)) return;
+    let cancelled = false;
+    void (async () => {
+      const images = [logoImgRef.current, qrImgRef.current].filter(Boolean) as HTMLImageElement[];
+      await Promise.all(images.map((img) => img.complete ? Promise.resolve() : new Promise<void>((resolve) => { const done = () => resolve(); img.addEventListener('load', done, { once: true }); img.addEventListener('error', done, { once: true }); window.setTimeout(done, 800); })));
+      try { await (document as any).fonts?.ready; } catch {}
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      if (!cancelled) try { (window as any).api?.notifyProductFormReady?.(); } catch {}
+    })();
     return () => { cancelled = true; };
-  }, [logoSrc]);
+  }, [flags.autoPrint, flags.silent, logoSrc, qrResolved, saleRequiresQr, qrSrc]);
 
+  const qrPending = saleRequiresQr && (!qrResolved || !qrSrc);
   const fullName = data.customerName || '';
   const phoneRaw = data.customerPhone || '';
   const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
@@ -142,6 +138,7 @@ const ProductFormWindow: React.FC = () => {
                 <div style={{ fontSize: 11, color: '#666' }}>Product Sales Form</div>
               </div>
             </div>
+            {qrSrc ? <div style={{ display: 'grid', justifyItems: 'center', gap: 2, marginLeft: 'auto', marginRight: 16 }}><img ref={qrImgRef} src={qrSrc} alt="Sales update QR" style={{ width: 88, height: 88, display: 'block' }} /><div style={{ fontSize: 9, color: '#666', fontWeight: 700, letterSpacing: 0.4 }}>SALES UPDATE</div></div> : null}
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 11, color: '#111' }}>2822 Devine Street, Columbia, SC 29205</div>
               <div style={{ fontSize: 11, color: '#111' }}>803-708-0101</div>
@@ -192,6 +189,7 @@ const ProductFormWindow: React.FC = () => {
           </div>
 
           <div className="toolbar">
+            <button disabled={qrPending} title={qrPending ? 'Generating the sales update QR before printing.' : 'Print'} onClick={() => { try { window.focus(); window.print(); } catch {} }} style={{ background:'#fff', color: qrPending ? '#999' : '#111', border:'1px solid #111', padding:'6px 12px', borderRadius:6, fontSize:'10pt', cursor: qrPending ? 'wait' : 'pointer' }}>{qrPending ? 'Preparing QR…' : 'Print'}</button>
             <button
               onClick={async () => {
                 try {

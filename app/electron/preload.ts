@@ -150,6 +150,7 @@ contextBridge.exposeInMainWorld('api', {
   openConsultSheet: (payload: any): Promise<any> => ipcRenderer.invoke('open-consult-sheet', payload),
   notifyConsultSheetReady: (): void => ipcRenderer.send('consult-sheet:ready'),
   openProductForm: (payload: any): Promise<any> => ipcRenderer.invoke('open-product-form', payload),
+  notifyProductFormReady: (): void => ipcRenderer.send('product-form:ready'),
   pickSaleProduct: (): Promise<any> => ipcRenderer.invoke('pick-sale-product'),
   getDeviceCategories: (): Promise<any[]> => ipcRenderer.invoke('db-get', 'deviceCategories'),
   addDeviceCategory: (c: any): Promise<any> => ipcRenderer.invoke('db-add', 'deviceCategories', c),

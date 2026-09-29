@@ -152,6 +152,7 @@ declare global {
     openConsultSheet: (payload: any | { data: any; autoPrint?: boolean; silent?: boolean; autoCloseMs?: number; show?: boolean }) => Promise<any>;
     notifyConsultSheetReady: () => void;
   openProductForm: (payload: any) => Promise<any>;
+  notifyProductFormReady: () => void;
   pickSaleProduct: () => Promise<any>;
   onSalesChanged: (cb: () => void) => () => void;
   onQuotesChanged: (cb: () => void) => () => void;
