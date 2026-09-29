@@ -5570,8 +5570,9 @@ function mergeCloudRowsIntoLocalCache(key: string, rows: any[]): any[] {
       for (const s of Array.isArray(nextDb.sales) ? nextDb.sales : []) maxId = Math.max(maxId, Number(s?.id || 0));
       if (Number.isFinite(maxId)) nextDb.invoiceSeq = maxId;
     }
-    writeDb(nextDb);
-    return nextList;
+    const sanitized = sanitizeAccidentalTestData(nextDb);
+    writeDb(sanitized.db);
+    return Array.isArray(sanitized.db?.[key]) ? sanitized.db[key] : [];
   } catch {
     // Local cloud-read cache is best effort.
     return Array.isArray(rows) ? rows : [];

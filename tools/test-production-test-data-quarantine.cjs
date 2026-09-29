@@ -1,5 +1,7 @@
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { sanitizeAccidentalTestData } = require('../dist-main/app/electron/test-data-quarantine.js');
 
 const fakeCustomer = { id: 1, email: 'alex.moore@example.com', phone: '803-100-0079', createdAt: '2026-09-22T23:49:29.201Z' };
@@ -21,11 +23,11 @@ const source = {
 };
 
 const { db, summary } = sanitizeAccidentalTestData(source);
-assert.equal(summary.removed, 7, 'removes explicitly marked generated records without inferring by reused customer IDs');
+assert.equal(summary.removed, 9, 'removes generated records linked to a confirmed test customer without relying on old metadata.');
 assert.equal(db.customers.length, 1);
 assert.equal(db.workOrders.length, 1);
-assert.equal(db.sales.length, 2, 'unmarked sales remain for a fixture-specific cleanup pass');
-assert.equal(db.quotes.length, 2, 'unmarked quotes remain for a fixture-specific cleanup pass');
+assert.equal(db.sales.length, 1, 'Sales linked to a confirmed test customer are quarantined with the rest of its fixture data.');
+assert.equal(db.quotes.length, 1, 'Quotes linked to a confirmed test customer are quarantined with the fixture.');
 assert.equal(db.calendarEvents.length, 1);
 assert.equal(db.purchaseOrders.length, 1);
 assert.equal(db.notifications.length, 1);
@@ -33,4 +35,20 @@ assert.equal(db.products.length, 1);
 assert.equal(db.repairCategories.length, 1);
 assert.equal(db._meta?.seedProfile, undefined, 'production DB must not retain the seed profile marker');
 assert.deepEqual(db.workOrders[0], realWorkOrder, 'real work order is preserved');
+
+
+const unmarkedSeedProfile = {
+  customers: [fakeCustomer, realCustomer],
+  workOrders: [fakeWorkOrder, realWorkOrder],
+  sales: [{ id: 1231, customerId: 1 }, { id: 1600, customerId: 99 }],
+};
+const unmarkedResult = sanitizeAccidentalTestData(unmarkedSeedProfile);
+assert.equal(unmarkedResult.db.customers.length, 1, 'A production cache must quarantine the deterministic test customer even after its old seed marker was cleared.');
+assert.equal(unmarkedResult.db.workOrders.length, 1, 'A production cache must quarantine explicitly marked test work orders without relying on old metadata.');
+assert.equal(unmarkedResult.db.sales.length, 1, 'Sales linked to a quarantined test customer must not survive as orphaned test data.');
+
+
+const electronSource = fs.readFileSync(path.join(__dirname, '..', 'app', 'electron', 'electron-main.ts'), 'utf8');
+assert.match(electronSource, /const sanitized = sanitizeAccidentalTestData\(nextDb\);[\s\S]*writeDb\(sanitized\.db\);/, 'Cloud-to-local merges must pass through the generated-data quarantine before they reach the production cache.');
+
 console.log('Production test-data quarantine behavior passed.');
