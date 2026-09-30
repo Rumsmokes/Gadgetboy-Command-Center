@@ -5617,10 +5617,20 @@ async function cloudDbUpsert(key: string, item: any) {
   }
   const row = toCloudRow(key, item);
   if (!row) throw new Error(`Cloud ${key} write skipped: unsupported row.`);
-  const res = await client.from(table).upsert(row, {
+  let res = await client.from(table).upsert(row, {
     onConflict: cloudConflictForKey(key),
     ignoreDuplicates: false,
   });
+  // Older deployed calendar_notes tables predate the optional attachments
+  // column. A note itself must still sync across devices in that case.
+  if (res.error && key === 'calendarNotes' && /attachments|schema cache|column/i.test(String(res.error.message || ''))) {
+    const fallbackRow = { ...row };
+    delete fallbackRow.attachments;
+    res = await client.from(table).upsert(fallbackRow, {
+      onConflict: cloudConflictForKey(key),
+      ignoreDuplicates: false,
+    });
+  }
   if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
   if (key === 'technicians') await syncDesktopTechnicianCredential(item);
   return { ok: true };

@@ -1645,6 +1645,14 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
         ignoreDuplicates: false,
       }).select('*').maybeSingle();
     }
+    if (res.error && key === 'calendarNotes' && /attachments|schema cache|column/i.test(String(res.error.message || ''))) {
+      const fallbackRow = { ...row };
+      delete fallbackRow.attachments;
+      res = await supabase.from(table).upsert(fallbackRow, {
+        onConflict: cloudConflictForKey(key),
+        ignoreDuplicates: false,
+      }).select('*').maybeSingle();
+    }
     if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
     await syncTechnicianCredential(key, item, res.data);
     const saved = fromCloudRow(key, res.data || row);
@@ -1706,6 +1714,11 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
       delete fallbackRow.inventory_parent_legacy_id;
       delete fallbackRow.repair_family;
       delete fallbackRow.service_key;
+      res = await supabase.from(table).insert(fallbackRow).select('*').single();
+    }
+    if (res.error && key === 'calendarNotes' && /attachments|schema cache|column/i.test(String(res.error.message || ''))) {
+      const fallbackRow = { ...row };
+      delete fallbackRow.attachments;
       res = await supabase.from(table).insert(fallbackRow).select('*').single();
     }
     if (!res.error) {
