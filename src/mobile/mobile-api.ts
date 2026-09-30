@@ -1654,6 +1654,12 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
     return saved;
   } catch (e) {
     if (queueOnFailure) queuePending({ op: 'upsert', key, item });
+    // Calendar notes are commonly written directly from the mobile calendar.
+    // Keep that completed local entry visible while its queued retry waits for
+    // Supabase, instead of making the calendar roll the note back as a failure.
+    if (queueOnFailure && key === 'calendarNotes') {
+      return upsertLocalOnly(key, { ...item, pendingSync: true, syncError: e instanceof Error ? e.message : String(e || '') });
+    }
     throw e;
   }
 }
@@ -1716,8 +1722,14 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
     item = { ...candidate, id: Number(candidate.id) + 1 };
   }
 
+  const errorMessage = `Cloud ${key} insert failed: ${lastError?.message || 'Unknown error'}`;
   queuePending({ op: 'upsert', key, item });
-  throw new Error(`Cloud ${key} insert failed: ${lastError?.message || 'Unknown error'}`);
+  // A newly entered calendar note must survive a temporary cloud outage. The
+  // retry queue will replace this local pending version after it syncs.
+  if (key === 'calendarNotes') {
+    return upsertLocalOnly(key, { ...item, pendingSync: true, syncError: errorMessage });
+  }
+  throw new Error(errorMessage);
 }
 
 async function syncTechnicianCredential(key: string, item: any, savedRow: any) {

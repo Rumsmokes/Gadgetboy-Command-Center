@@ -90,6 +90,8 @@ type CalendarNote = {
   body: string;
   createdAt?: string;
   updatedAt?: string;
+  pendingSync?: boolean;
+  syncError?: string;
 };
 
 type CalendarColors = {
@@ -456,6 +458,7 @@ const CalendarWindow: React.FC = () => {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaveError, setNoteSaveError] = useState('');
+  const [noteSaveMessage, setNoteSaveMessage] = useState('');
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [taskQueue, setTaskQueue] = useState<CalendarEvent[]>([]);
   const [taskBatchSaving, setTaskBatchSaving] = useState(false);
@@ -1256,12 +1259,16 @@ const CalendarWindow: React.FC = () => {
     setCalendarNotes(list => replaceRecordById(list, optimisticNote));
     setNoteSaving(true);
     setNoteSaveError('');
+    setNoteSaveMessage('');
     try {
       const saved = existing
         ? await (window as any).api.dbUpdate('calendarNotes', existing.id, optimisticNote)
         : await (window as any).api.dbAdd('calendarNotes', optimisticNote);
       if (!saved) throw new Error('The note was not returned after saving.');
       setCalendarNotes(list => replaceRecordById(list, saved));
+      setNoteSaveMessage(saved?.pendingSync
+        ? 'Saved on this device — syncing when the connection returns.'
+        : 'Note saved.');
       setNoteDraft({ subject: '', body: '' });
       setEditingNoteId(null);
     } catch (error: any) {
@@ -2173,6 +2180,7 @@ const CalendarWindow: React.FC = () => {
                 <input className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2" placeholder="Subject" value={noteDraft.subject} onChange={event => setNoteDraft(draft => ({ ...draft, subject: event.target.value }))} />
                 <textarea className="mt-2 min-h-0 flex-1 w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-3 resize-none leading-relaxed" placeholder="Write the important note..." value={noteDraft.body} onChange={event => setNoteDraft(draft => ({ ...draft, body: event.target.value }))} />
                 {noteSaveError ? <div className="mt-2 rounded border border-red-700 bg-red-950/40 px-3 py-2 text-sm text-red-200">{noteSaveError}</div> : null}
+                {noteSaveMessage ? <div className="mt-2 rounded border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-200">{noteSaveMessage}</div> : null}
                 <div className="mt-3 flex justify-end gap-2">
                 {editingNoteId !== null ? <button type="button" className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" onClick={() => { setEditingNoteId(null); setNoteDraft({ subject: '', body: '' }); }}>Cancel edit</button> : null}
                 <button type="button" className="px-3 py-1.5 bg-amber-400 text-black font-semibold rounded disabled:opacity-50" disabled={!noteDraft.subject.trim() || !noteDraft.body.trim() || noteSaving} onClick={() => { void saveNote(); }}>

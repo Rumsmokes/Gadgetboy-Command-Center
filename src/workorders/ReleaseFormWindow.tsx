@@ -174,6 +174,15 @@ const ReleaseFormWindow: React.FC = () => {
   const phoneAltRaw = (data as any).customerPhoneAlt || (data as any).customer?.phoneAlt || '';
   const phoneAlt = formatPhone(String(phoneAltRaw || '')) || String(phoneAltRaw || '');
   const email = (data as any).customerEmail || (data as any).customer?.email || '';
+  const patternSteps = Array.isArray((data as any).patternSequence) ? (data as any).patternSequence : [];
+  const patternDisplay = patternSteps
+    .map((step: any) => Number(step))
+    .filter((step: number) => Number.isFinite(step) && step >= 0 && step <= 8)
+    .map((step: number) => step + 1)
+    .join(' → ');
+  const accessories = Array.isArray((data as any).dropoffAccessories)
+    ? (data as any).dropoffAccessories.filter(Boolean).join(', ')
+    : String((data as any).dropoffAccessories || '').trim();
 
   return (
     <div className="gb-release-form-window" style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
@@ -224,18 +233,20 @@ const ReleaseFormWindow: React.FC = () => {
         </div>
       </div>
 
-  <div className="section" style={{ background: '#f8fafc' }}>
+  <div id="release-device-intake" className="section" style={{ background: '#f8fafc' }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Device Intake</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Customer</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{fullName}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Phone</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{phone}</div></div>
-          {phoneAlt ? <div><div style={{ color: '#666', fontSize: 11 }}>Alt Phone</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{phoneAlt}</div></div> : null}
-          {email ? <div><div style={{ color: '#666', fontSize: 11 }}>Email</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{email}</div></div> : null}
-          <div><div style={{ color: '#666', fontSize: 11 }}>Device</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.productDescription || data.productCategory || ''}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Device Category</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.productCategory || ''}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Device Name</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.productDescription || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Model</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.model || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Serial</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.serial || ''}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Serial #</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.serial || data.serialNumber || ''}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Password / PIN</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.password || ''}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Unlock Pattern</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{patternDisplay || ''}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Accessories</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{accessories}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Intake Source</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.intakeSource || ''}</div></div>
         </div>
         <div style={{ marginTop: 6 }}>
-          <div style={{ color: '#666', fontSize: 11 }}>Problem</div>
+          <div style={{ color: '#666', fontSize: 11 }}>Reported Problem</div>
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 4, padding: '6px 8px', minHeight: 28, whiteSpace: 'pre-wrap' }}>{data.problemInfo || ''}</div>
         </div>
       </div>
