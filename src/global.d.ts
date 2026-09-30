@@ -133,6 +133,7 @@ declare global {
     qrGetServerInfo: () => Promise<{ ok: boolean; hostname?: string; ip?: string; port?: number; hostUrl?: string; ipUrl?: string; error?: string }>;
     // email
     emailGetConfig: () => Promise<{ ok: boolean; fromEmail?: string; fromName?: string; bodyTemplate?: string | null; hasAppPassword?: boolean; error?: string }>;
+    emailTestConnection: () => Promise<{ ok: boolean; skipped?: boolean; message?: string; error?: string }>;
     emailSetGmailAppPassword: (appPassword: string, fromName?: string) => Promise<{ ok: boolean; error?: string }>;
     emailSetFromName: (fromName: string) => Promise<{ ok: boolean; error?: string }>;
     emailSetBodyTemplate: (bodyTemplate: string) => Promise<{ ok: boolean; error?: string }>;

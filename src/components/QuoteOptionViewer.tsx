@@ -7,6 +7,7 @@ export default function QuoteOptionViewer({ onClose }: { onClose: () => void }) 
   const [presenting, setPresenting] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [importError, setImportError] = useState('');
+  const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
 
   const readImage = (file: File) => new Promise<OptionImage>((resolve, reject) => {
     const reader = new FileReader();
@@ -40,15 +41,33 @@ export default function QuoteOptionViewer({ onClose }: { onClose: () => void }) 
     [next[index], next[target]] = [next[target], next[index]];
     return next;
   });
+  useEffect(() => {
+    const syncFullscreen = async () => {
+      if (window.api?.getFullScreen) setIsNativeFullscreen(!!(await window.api.getFullScreen()));
+      else setIsNativeFullscreen(!!document.fullscreenElement);
+    };
+    void syncFullscreen();
+    const timer = window.setInterval(() => void syncFullscreen(), 400);
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => { window.clearInterval(timer); document.removeEventListener('fullscreenchange', syncFullscreen); };
+  }, []);
+
   const fullscreen = async () => {
     try {
+      if (window.api?.setFullScreen) {
+        await window.api.setFullScreen(!isNativeFullscreen);
+        setIsNativeFullscreen(!isNativeFullscreen);
+        return;
+      }
       if (document.fullscreenElement) await document.exitFullscreen();
       else await rootRef.current?.requestFullscreen();
-    } catch {}
+    } catch {
+      setImportError('Fullscreen could not be started on this display.');
+    }
   };
 
   return (
-    <div ref={rootRef} className="quote-option-viewer fixed inset-0 z-[80] flex flex-col bg-[#09090b] text-zinc-100" onClick={event => event.stopPropagation()}>
+    <div ref={rootRef} className={`quote-option-viewer fixed inset-0 z-[80] flex flex-col bg-[#09090b] text-zinc-100 ${isNativeFullscreen ? 'gb-client-display-fullscreen' : ''}`} onClick={event => event.stopPropagation()}>
       <header className="quote-option-toolbar flex flex-wrap items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-bold text-[#39FF14]">Option Viewer</h2>
@@ -61,7 +80,7 @@ export default function QuoteOptionViewer({ onClose }: { onClose: () => void }) 
         )}
         <button className="rounded border border-violet-500 bg-violet-950 px-4 py-2 font-semibold" onClick={() => void fullscreen()}>Fullscreen</button>
         <button className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 font-semibold" onClick={onClose}>Close</button>
-      </header><style>{`.quote-option-viewer:fullscreen .quote-option-toolbar{display:none}`}</style>
+      </header><style>{`.quote-option-viewer:fullscreen .quote-option-toolbar,.quote-option-viewer.gb-client-display-fullscreen .quote-option-toolbar{display:none}`}</style>
 
       {presenting ? (
         <main className="flex-1 overflow-y-auto bg-zinc-100 p-3 sm:p-6">

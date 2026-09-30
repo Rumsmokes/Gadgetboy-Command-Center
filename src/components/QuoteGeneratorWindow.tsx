@@ -514,6 +514,7 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [quotePreviewFullscreen, setQuotePreviewFullscreen] = useState(false);
   const [showOptionViewer, setShowOptionViewer] = useState(false);
   const [showHtmlPreview, setShowHtmlPreview] = useState(false);
   const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null);
@@ -530,6 +531,8 @@ function QuoteGeneratorWindow(): JSX.Element {
   const [emailErr, setEmailErr] = useState<string | null>(null);
   const [emailSettingsSaving, setEmailSettingsSaving] = useState(false);
   const [emailSettingsErr, setEmailSettingsErr] = useState<string | null>(null);
+  const [emailConnectionMessage, setEmailConnectionMessage] = useState<string | null>(null);
+  const [emailTesting, setEmailTesting] = useState(false);
   const [quoteEmailAttachmentMode, setQuoteEmailAttachmentMode] = useState<'html' | 'pdf'>('pdf');
   const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
   const [quoteId, setQuoteId] = useState<number | undefined>(undefined);
@@ -4030,32 +4033,35 @@ function QuoteGeneratorWindow(): JSX.Element {
   function toggleSaleItemExpanded(idx: number) {
     setSales((s) => ({ ...s, items: s.items.map((x, i) => (i === idx ? { ...x, expanded: !x.expanded } : x)) }));
   }
-  async function addImagesToItem(idx: number, fileList: FileList | null) {
-    if (!fileList) return;
-    const files = Array.from(fileList);
-    setSales((current) => {
-      const cur = (current.items[idx] || {}) as SaleItem;
-      const room = 3 - (cur.images?.length || 0);
-      const pick = files.slice(0, Math.max(0, room));
-      const readers = pick.map(
-        (f) =>
-          new Promise<string>((resolve, reject) => {
-            const fr = new FileReader();
-            fr.onload = () => resolve(String(fr.result || ''));
-            fr.onerror = () => reject(fr.error);
-            fr.readAsDataURL(f);
-          })
-      );
-      Promise.all(readers)
-        .then((dataUrls) => {
-          setSales((prev) => ({
-            ...prev,
-            items: prev.items.map((x, i) => (i === idx ? { ...x, images: [...(x.images || []), ...dataUrls].slice(0, 3) } : x)),
-          }));
-        })
-        .catch(() => {});
-      return current;
-    });
+  async function addImagesToItem(idx: number, fileList: FileList | File[] | null) {
+    const candidates = Array.from(fileList || []).filter((file) => file.type.startsWith('image/'));
+    if (!candidates.length) {
+      setSaveMsg('Choose an image file (PNG, JPG, WEBP, or similar).');
+      setTimeout(() => setSaveMsg(null), 2400);
+      return;
+    }
+    const results = await Promise.allSettled(candidates.map((file) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const value = String(reader.result || '');
+        value.startsWith('data:image/') ? resolve(value) : reject(new Error('Unsupported image'));
+      };
+      reader.onerror = () => reject(reader.error || new Error('Could not read image'));
+      reader.readAsDataURL(file);
+    })));
+    const images = results.filter((result): result is PromiseFulfilledResult<string> => result.status === 'fulfilled').map((result) => result.value);
+    if (images.length) {
+      setSales((current) => ({
+        ...current,
+        items: current.items.map((item, itemIndex) => itemIndex === idx
+          ? { ...item, images: [...(item.images || []), ...images].slice(0, 3) }
+          : item),
+      }));
+    }
+    if (results.some((result) => result.status === 'rejected')) {
+      setSaveMsg(images.length ? 'Some images could not be added.' : 'Those image files could not be read.');
+      setTimeout(() => setSaveMsg(null), 2600);
+    }
   }
   function removeImageFromItem(idx: number, imageIdx: number) {
     setSales((prev) => ({
@@ -4373,11 +4379,40 @@ function QuoteGeneratorWindow(): JSX.Element {
     setShowPreview(true);
   }
 
+  useEffect(() => {
+    if (!showPreview) {
+      setQuotePreviewFullscreen(false);
+      return;
+    }
+    const syncFullscreen = async () => {
+      if (window.api?.getFullScreen) {
+        setQuotePreviewFullscreen(!!(await window.api.getFullScreen()));
+      } else {
+        setQuotePreviewFullscreen(!!document.fullscreenElement);
+      }
+    };
+    void syncFullscreen();
+    const timer = window.setInterval(() => void syncFullscreen(), 400);
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('fullscreenchange', syncFullscreen);
+    };
+  }, [showPreview]);
+
   async function toggleQuotePreviewFullscreen() {
     try {
+      if (window.api?.setFullScreen) {
+        await window.api.setFullScreen(!quotePreviewFullscreen);
+        setQuotePreviewFullscreen(!quotePreviewFullscreen);
+        return;
+      }
       if (document.fullscreenElement) await document.exitFullscreen();
       else await quotePreviewRef.current?.requestFullscreen();
-    } catch {}
+    } catch {
+      setSaveMsg('Fullscreen could not be started on this display.');
+      setTimeout(() => setSaveMsg(null), 2200);
+    }
   }
 
   async function openHtmlPreview() {
@@ -4521,6 +4556,22 @@ function QuoteGeneratorWindow(): JSX.Element {
       setEmailSettingsErr(String(e?.message || e || 'Could not save settings'));
     } finally {
       setEmailSettingsSaving(false);
+    }
+  }
+
+  async function testEmailConnection() {
+    try {
+      setEmailSettingsErr(null);
+      setEmailConnectionMessage(null);
+      setEmailTesting(true);
+      const result = await window.api.emailTestConnection();
+      setEmailConnectionMessage(result?.ok
+        ? 'Gmail connection verified.'
+        : String(result?.error || 'Gmail could not be verified.'));
+    } catch (error: any) {
+      setEmailConnectionMessage(String(error?.message || 'Gmail could not be verified.'));
+    } finally {
+      setEmailTesting(false);
     }
   }
 
@@ -6062,14 +6113,15 @@ function QuoteGeneratorWindow(): JSX.Element {
                         <div className="col-span-16">
                           <div className="flex items-center justify-between mb-1">
                             <label className="block text-xs text-zinc-400">Images (max 3)</label>
-                            <button className="px-2 py-0.5 text-xs bg-zinc-700 border border-zinc-600 rounded disabled:opacity-50" disabled={(it.images?.length || 0) >= 3} onClick={() => {
-                              const input = document.createElement('input');
-                              input.type = 'file';
-                              input.accept = 'image/*';
-                              input.multiple = true;
-                              input.onchange = (e: any) => addImagesToItem(idx, (e.target as HTMLInputElement).files);
-                              input.click();
-                            }}>Add Image</button>
+                            <label
+                              className="cursor-pointer rounded border border-dashed border-violet-500 bg-violet-950/30 px-2 py-1 text-xs font-medium text-violet-100 hover:bg-violet-900/50 disabled:opacity-50"
+                              aria-label="Browse quote item images"
+                              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }}
+                              onDrop={(event) => { event.preventDefault(); void addImagesToItem(idx, event.dataTransfer.files); }}
+                            >
+                              <input className="sr-only" type="file" accept="image/*" multiple disabled={(it.images?.length || 0) >= 3} onChange={(event) => { void addImagesToItem(idx, event.target.files); event.currentTarget.value = ''; }} />
+                              Browse or drop images
+                            </label>
                           </div>
                           <div className="flex gap-2 items-center overflow-x-auto whitespace-nowrap min-h-[40px] rounded border border-dashed border-zinc-700 p-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void addImagesToItem(idx, event.dataTransfer.files); }}>
                             {it.images && it.images.length > 0 ? (
@@ -6397,9 +6449,9 @@ function QuoteGeneratorWindow(): JSX.Element {
           </div>
         )}
 
-          <div className="gb-quote-action-bar flex flex-wrap items-center justify-between gap-2">
-          <div className="text-xs text-zinc-400 h-6 flex items-center">{saveMsg}</div>
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="gb-quote-action-bar flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2">
+          <div className="min-h-6 text-xs text-zinc-400 flex items-center">{saveMsg}</div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded text-xs disabled:opacity-50 whitespace-nowrap" disabled={saving} onClick={saveQuote}>{saving ? 'Saving...' : 'Save Quote'}</button>
             {mode === 'sales' && (
               <button
@@ -6627,16 +6679,20 @@ function QuoteGeneratorWindow(): JSX.Element {
                       <div className="text-[11px] text-zinc-400 mb-2">Required to send mail from inside the app. Stored encrypted in userData via Electron safeStorage.</div>
                       <div className="flex items-center gap-2">
                         <div className="text-sm">Status:</div>
-                        <div className={`text-sm font-semibold ${emailHasPassword ? 'text-[#39FF14]' : 'text-yellow-200'}`}>{emailHasPassword ? 'Configured' : 'Not configured'}</div>
+                        <div className={`text-sm font-semibold ${emailHasPassword ? 'text-[#39FF14]' : 'text-yellow-200'}`}>{emailHasPassword ? 'Password saved' : 'Not configured'}</div>
                         <div className="flex-1" />
                         {emailHasPassword && (
-                          <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSettingsSaving} onClick={clearEmailPassword}>Clear Password</button>
+                          <>
+                            <button className="px-3 py-1.5 bg-violet-950 border border-violet-500 rounded disabled:opacity-50" disabled={emailSettingsSaving || emailTesting} onClick={() => void testEmailConnection()}>{emailTesting ? 'Testing…' : 'Test connection'}</button>
+                            <button className="px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSettingsSaving || emailTesting} onClick={clearEmailPassword}>Clear Password</button>
+                          </>
                         )}
                       </div>
                       <input value={emailAppPassword} onChange={(e) => setEmailAppPassword(e.target.value)} placeholder={emailHasPassword ? 'Paste to replace password (optional)' : 'Paste app password'} className="mt-2 w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded" />
                     </div>
 
                     {emailSettingsErr && (<div className="mt-3 text-sm text-red-300">{emailSettingsErr}</div>)}
+                    {emailConnectionMessage && (<div className={`mt-3 text-sm ${emailConnectionMessage === 'Gmail connection verified.' ? 'text-[#39FF14]' : 'text-red-300'}`}>{emailConnectionMessage}</div>)}
 
                     <div className="mt-4 flex items-center justify-end gap-2">
                       <button className="px-4 py-2 bg-zinc-800 border border-zinc-700 rounded" disabled={emailSettingsSaving} onClick={() => setShowEmailSettings(false)}>Cancel</button>
@@ -6662,7 +6718,7 @@ function QuoteGeneratorWindow(): JSX.Element {
           )}
 
           {showPreview && (
-            <div ref={quotePreviewRef} className="quote-customer-preview fixed inset-0 bg-zinc-950 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
+            <div ref={quotePreviewRef} className={`quote-customer-preview fixed inset-0 bg-zinc-950 flex items-center justify-center z-50 ${quotePreviewFullscreen ? 'gb-client-display-fullscreen' : ''}`} onClick={() => { if (!quotePreviewFullscreen) setShowPreview(false); }}>
             <div className="quote-preview-toolbar absolute top-3 right-3 z-10" onClick={(e) => e.stopPropagation()}>
               <button className="px-4 py-2 bg-violet-700 text-white border border-violet-500 rounded-md text-base font-semibold hover:bg-violet-600" onClick={() => void toggleQuotePreviewFullscreen()}>Fullscreen</button>
             </div>
@@ -6686,8 +6742,8 @@ function QuoteGeneratorWindow(): JSX.Element {
                       @media screen {
                         .quote-customer-preview #quote-print-root .print-page { width:min(100%, 1200px) !important; min-height:auto !important; margin:12px auto !important; }
                         .quote-customer-preview #quote-print-root { scrollbar-color:#71717a #e4e4e7; scrollbar-width:thin; }
-                        .quote-customer-preview:fullscreen .quote-preview-toolbar { display:none; }
-                        .quote-customer-preview:fullscreen #quote-print-root { width:100vw !important; height:100vh !important; box-shadow:none !important; }
+                        .quote-customer-preview:fullscreen .quote-preview-toolbar, .quote-customer-preview.gb-client-display-fullscreen .quote-preview-toolbar { display:none; }
+                        .quote-customer-preview:fullscreen #quote-print-root, .quote-customer-preview.gb-client-display-fullscreen #quote-print-root { width:100vw !important; height:100vh !important; box-shadow:none !important; }
                       }
                     `}</style>
                     {/* Custom PC/Build preview pages OR default device view */}

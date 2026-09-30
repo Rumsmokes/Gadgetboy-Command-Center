@@ -2055,6 +2055,24 @@ ipcMain.handle('os:openUrl', async (_e: any, url: string) => {
 // -------------------------
 // Email IPC
 // -------------------------
+ipcMain.handle('email:testConnection', async () => {
+  try {
+    if (IS_TEST_ENVIRONMENT) return { ok: true, skipped: true, message: 'Email is disabled in the generated-data test environment.' };
+    const cfg = readEmailConfig();
+    const appPass = decryptAppPassword(cfg);
+    if (!appPass) return { ok: false, error: 'Email not configured. Set Gmail App Password first.' };
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: 'gadgetboysc@gmail.com', pass: appPass },
+    });
+    await transporter.verify();
+    return { ok: true };
+  } catch (error: any) {
+    return { ok: false, error: String(error?.message || error || 'Gmail could not be verified.') };
+  }
+});
+
 ipcMain.handle('email:getConfig', async () => {
   try {
     const cfg = readEmailConfig();

@@ -110,6 +110,7 @@ contextBridge.exposeInMainWorld('api', {
   openInteractiveHtml: (html: string, title?: string): Promise<any> => ipcRenderer.invoke('open-interactive-html', html, title),
   // Email
   emailGetConfig: (): Promise<any> => ipcRenderer.invoke('email:getConfig'),
+  emailTestConnection: (): Promise<any> => ipcRenderer.invoke('email:testConnection'),
   emailSetGmailAppPassword: (appPassword: string, fromName?: string): Promise<any> => ipcRenderer.invoke('email:setGmailAppPassword', appPassword, fromName),
   emailSetFromName: (fromName: string): Promise<any> => ipcRenderer.invoke('email:setFromName', fromName),
   emailSetBodyTemplate: (bodyTemplate: string): Promise<any> => ipcRenderer.invoke('email:setBodyTemplate', bodyTemplate),

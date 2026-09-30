@@ -2080,6 +2080,7 @@ function makeApi() {
         error: status.error,
       };
     },
+    emailTestConnection: async () => ({ ok: false, error: 'Email verification is available on the desktop POS.' }),
     emailSetGmailAppPassword: async () => ({ ok: false, error: 'The Gmail App Password is managed securely in Supabase Edge Function secrets.' }),
     emailSetFromName: async () => ({ ok: true }),
     emailSetBodyTemplate: async () => ({ ok: true }),
