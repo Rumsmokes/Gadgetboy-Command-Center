@@ -15,5 +15,9 @@ const release = fs.readFileSync(path.join(root, 'src/workorders/ReleaseFormWindo
 for (const label of ['Password / PIN', 'Unlock Pattern', 'Accessories', 'Assigned Technician', 'Check-In']) {
   assert.ok(release.includes(label), `Automatic release form must include ${label}.`);
 }
+assert.match(release, /patternDisplay \? <div/, 'Unlock Pattern must be omitted when no pattern was entered.');
+assert.match(release, /accessories \? <div/, 'Accessories must be omitted when none were entered.');
+assert.ok(!release.includes('>Intake Source<'), 'The release form must not print the internal intake source.');
+assert.ok(release.includes('<strong>Email:</strong>'), 'The client email must have an explicit label.');
 
 console.log('Work-order password persistence and release intake checks passed.');

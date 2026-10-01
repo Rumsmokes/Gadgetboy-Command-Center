@@ -16,7 +16,7 @@ import DropoffAccessoriesPanel from './DropoffAccessoriesPanel';
 import ClientUpdatePanel from './ClientUpdatePanel';
 import { computeTotals, round2 } from '../lib/calc';
 import { WorkOrderFull, WorkOrderItem as BaseWorkOrderItem, DroneChecklist, DropoffAccessory, RepairItem } from '../lib/types';
-import { listTechnicians } from '../lib/admin';
+import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import type { SaleItemRow } from '../sales/SaleItemsTable';
 import { discountedWorkOrderItemAmounts, ticketLaborCharge } from '../lib/ticketAccounting';
 import DurantProposalReview from './DurantProposalReview';
@@ -1629,6 +1629,14 @@ const NewWorkOrderWindow: React.FC = () => {
         const initialCheckoutReleaseForm = workOrderPersisted && effectiveId > 0 && appliedToWorkOrder > 0 && prevPayments.length === 0;
         if (initialCheckoutReleaseForm) {
           try {
+            let assignedTechnicianName = '';
+            try {
+              const technicians = await listTechnicians();
+              const assigned = technicians.find((technician: any) => String(technician?.id) === String(nextWo.assignedTo ?? wo.assignedTo ?? ''));
+              if (assigned) assignedTechnicianName = technicianDisplayName(assigned);
+            } catch {
+              // The release form still opens when a technician lookup is temporarily unavailable.
+            }
             // Preserve the complete intake record for the automatic first-payment form.
             // The printer must receive the fields the technician entered even while
             // an asynchronous work-order refresh is occurring in the background.
@@ -1646,6 +1654,7 @@ const NewWorkOrderWindow: React.FC = () => {
               intakeSource: nextWo.intakeSource ?? wo.intakeSource ?? '',
               problemInfo: nextWo.problemInfo ?? wo.problemInfo ?? '',
               assignedTo: nextWo.assignedTo ?? wo.assignedTo ?? '',
+              assignedTechnicianName,
               checkInAt: nextWo.checkInAt ?? wo.checkInAt ?? '',
               autoPrint: true,
               silent: true,

@@ -233,7 +233,7 @@ const ReleaseFormWindow: React.FC = () => {
           {fullName ? <div style={{ fontSize: 11, color: '#111', marginTop: 4 }}><strong>Client:</strong> {fullName}</div> : null}
           {phone ? <div style={{ fontSize: 11, color: '#111' }}><strong>Phone:</strong> {phone}</div> : null}
           {phoneAlt ? <div style={{ fontSize: 11, color: '#111' }}><strong>Alt:</strong> {phoneAlt}</div> : null}
-          {email ? <div style={{ fontSize: 11, color: '#666' }}>{email}</div> : null}
+          {email ? <div style={{ fontSize: 11, color: '#666' }}><strong>Email:</strong> {email}</div> : null}
         </div>
       </div>
 
@@ -245,10 +245,9 @@ const ReleaseFormWindow: React.FC = () => {
           <div><div style={{ color: '#666', fontSize: 11 }}>Model</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.model || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Serial #</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.serial || data.serialNumber || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Password / PIN</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.password || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Unlock Pattern</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{patternDisplay || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Accessories</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{accessories}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Intake Source</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.intakeSource || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Assigned Technician</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.assignedTo || ''}</div></div>
+          {patternDisplay ? <div><div style={{ color: '#666', fontSize: 11 }}>Unlock Pattern</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{patternDisplay}</div></div> : null}
+          {accessories ? <div><div style={{ color: '#666', fontSize: 11 }}>Accessories</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{accessories}</div></div> : null}
+          <div><div style={{ color: '#666', fontSize: 11 }}>Assigned Technician</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.assignedTechnicianName || data.assignedTo || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Check-In</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{checkInDisplay}</div></div>
         </div>
         <div style={{ marginTop: 6 }}>
