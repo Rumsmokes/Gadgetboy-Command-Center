@@ -183,6 +183,10 @@ const ReleaseFormWindow: React.FC = () => {
   const accessories = Array.isArray((data as any).dropoffAccessories)
     ? (data as any).dropoffAccessories.filter(Boolean).join(', ')
     : String((data as any).dropoffAccessories || '').trim();
+  const checkInDate = data.checkInAt ? new Date(data.checkInAt) : null;
+  const checkInDisplay = checkInDate && !Number.isNaN(checkInDate.getTime())
+    ? checkInDate.toLocaleString()
+    : '';
 
   return (
     <div className="gb-release-form-window" style={{ background: '#f3f4f6', color: '#111', minHeight: '100vh', padding: '12px 0', fontFamily: 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif' }}>
@@ -244,6 +248,8 @@ const ReleaseFormWindow: React.FC = () => {
           <div><div style={{ color: '#666', fontSize: 11 }}>Unlock Pattern</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{patternDisplay || ''}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Accessories</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{accessories}</div></div>
           <div><div style={{ color: '#666', fontSize: 11 }}>Intake Source</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.intakeSource || ''}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Assigned Technician</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.assignedTo || ''}</div></div>
+          <div><div style={{ color: '#666', fontSize: 11 }}>Check-In</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{checkInDisplay}</div></div>
         </div>
         <div style={{ marginTop: 6 }}>
           <div style={{ color: '#666', fontSize: 11 }}>Reported Problem</div>

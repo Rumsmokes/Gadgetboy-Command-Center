@@ -4578,6 +4578,8 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
     };
   }
   if (key === 'workOrders') {
+    const privateCredential = extra?.credentialsByWorkOrderId?.get(String(row.id))
+      || extra?.credentialsByLegacyId?.get(String(id));
     return {
       id,
       customerId: cloudNullableNumber(row.legacy_customer_id),
@@ -4590,6 +4592,7 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       productDescription: row.product_description || '',
       model: row.model || '',
       serial: row.serial || '',
+      ...(privateCredential ? { password: String(privateCredential.device_password || '') } : {}),
       intakeSource: row.intake_source || '',
       problemInfo: row.problem_info || '',
       workOrderType: row.work_order_type || '',
@@ -5343,6 +5346,22 @@ async function getDesktopTechnicianCredentials() {
   return { credentialsByStaffId, credentialsByLegacyId };
 }
 
+async function getDesktopWorkOrderCredentials() {
+  const client = getCloudClient();
+  if (!client || !cloudSession) return { credentialsByWorkOrderId: new Map<string, any>(), credentialsByLegacyId: new Map<string, any>() };
+  const res = await client.from('work_order_private_credentials')
+    .select('work_order_id,legacy_work_order_id,device_password')
+    .eq('shop_id', cloudSession.shopId);
+  if (res.error) return { credentialsByWorkOrderId: new Map<string, any>(), credentialsByLegacyId: new Map<string, any>() };
+  const credentialsByWorkOrderId = new Map<string, any>();
+  const credentialsByLegacyId = new Map<string, any>();
+  for (const row of Array.isArray(res.data) ? res.data : []) {
+    if (row.work_order_id) credentialsByWorkOrderId.set(String(row.work_order_id), row);
+    if (row.legacy_work_order_id !== null && row.legacy_work_order_id !== undefined) credentialsByLegacyId.set(String(row.legacy_work_order_id), row);
+  }
+  return { credentialsByWorkOrderId, credentialsByLegacyId };
+}
+
 function displayAwareWindowSize(
   parent: any,
   preferred: { width: number; height: number },
@@ -5426,7 +5445,11 @@ async function cloudDbGet(key: string, opts?: { limit?: number; sortBy?: string;
   }
   const res = await q;
   if (res.error) throw new Error(`Cloud ${key} read failed: ${res.error.message}`);
-  const extra = key === 'technicians' ? await getDesktopTechnicianCredentials() : undefined;
+  const extra = key === 'technicians'
+    ? await getDesktopTechnicianCredentials()
+    : key === 'workOrders'
+      ? await getDesktopWorkOrderCredentials()
+      : undefined;
   let rows = (Array.isArray(res.data) ? res.data : []).map((row: any) => fromCloudRow(key, row, extra));
   if (key === 'technicians') rows = rows.filter(isAssignableDesktopTechnicianRow);
   return rows;
@@ -5467,7 +5490,11 @@ async function cloudDbGetChanged(key: string, cursor: CloudCursor | null, limit 
     pageStart += take;
   } while (limit <= 0 || rawRows.length < limit);
 
-  const extra = key === 'technicians' ? await getDesktopTechnicianCredentials() : undefined;
+  const extra = key === 'technicians'
+    ? await getDesktopTechnicianCredentials()
+    : key === 'workOrders'
+      ? await getDesktopWorkOrderCredentials()
+      : undefined;
   let rows = rawRows.map((row: any) => ({
     ...fromCloudRow(key, row, extra),
     cloudUpdatedAt: cloudDate(row.updated_at),
@@ -5633,6 +5660,7 @@ async function cloudDbUpsert(key: string, item: any) {
   }
   if (res.error) throw new Error(`Cloud ${key} write failed: ${res.error.message}`);
   if (key === 'technicians') await syncDesktopTechnicianCredential(item);
+  if (key === 'workOrders') await syncDesktopWorkOrderCredential(item);
   return { ok: true };
 }
 
@@ -5651,6 +5679,24 @@ async function syncDesktopTechnicianCredential(item: any) {
     legacy_passcode: String(item.passcode || '').slice(0, 4),
   }, { onConflict: 'shop_id,legacy_technician_id' });
   if (result.error) throw new Error(`Cloud technician passcode write failed: ${result.error.message}`);
+}
+
+async function syncDesktopWorkOrderCredential(item: any) {
+  if (!cloudSession || typeof item?.password === 'undefined') return;
+  const client = getCloudClient();
+  const legacyId = toCloudIntId(item.id);
+  if (!client || legacyId === null) return;
+  const workOrder = await client.from('work_orders').select('id')
+    .eq('shop_id', cloudSession.shopId).eq('legacy_id', legacyId).maybeSingle();
+  if (workOrder.error) throw new Error(`Cloud work-order credential lookup failed: ${workOrder.error.message}`);
+  if (!workOrder.data?.id) throw new Error('Cloud work-order credential lookup failed: work order was not found.');
+  const result = await client.from('work_order_private_credentials').upsert({
+    shop_id: cloudSession.shopId,
+    work_order_id: workOrder.data.id,
+    legacy_work_order_id: legacyId,
+    device_password: String(item.password || ''),
+  }, { onConflict: 'shop_id,work_order_id' });
+  if (result.error) throw new Error(`Cloud work-order password write failed: ${result.error.message}`);
 }
 
 async function cloudDbDelete(key: string, legacyId: any) {

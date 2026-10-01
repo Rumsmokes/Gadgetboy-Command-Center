@@ -1629,7 +1629,28 @@ const NewWorkOrderWindow: React.FC = () => {
         const initialCheckoutReleaseForm = workOrderPersisted && effectiveId > 0 && appliedToWorkOrder > 0 && prevPayments.length === 0;
         if (initialCheckoutReleaseForm) {
           try {
-            await api?.openReleaseForm?.({ ...nextWo, id: effectiveId, workOrderId: effectiveId, autoPrint: true, silent: true, autoCloseMs: 1800 });
+            // Preserve the complete intake record for the automatic first-payment form.
+            // The printer must receive the fields the technician entered even while
+            // an asynchronous work-order refresh is occurring in the background.
+            await api?.openReleaseForm?.({
+              ...nextWo,
+              id: effectiveId,
+              workOrderId: effectiveId,
+              productCategory: nextWo.productCategory ?? wo.productCategory ?? '',
+              productDescription: nextWo.productDescription ?? wo.productDescription ?? '',
+              model: nextWo.model ?? wo.model ?? '',
+              serial: nextWo.serial ?? wo.serial ?? '',
+              password: nextWo.password ?? wo.password ?? '',
+              patternSequence: nextWo.patternSequence ?? wo.patternSequence ?? [],
+              dropoffAccessories: nextWo.dropoffAccessories ?? wo.dropoffAccessories ?? [],
+              intakeSource: nextWo.intakeSource ?? wo.intakeSource ?? '',
+              problemInfo: nextWo.problemInfo ?? wo.problemInfo ?? '',
+              assignedTo: nextWo.assignedTo ?? wo.assignedTo ?? '',
+              checkInAt: nextWo.checkInAt ?? wo.checkInAt ?? '',
+              autoPrint: true,
+              silent: true,
+              autoCloseMs: 1800,
+            });
           } catch (releaseFormError) {
             console.warn('Initial release form could not be opened for printing.', releaseFormError);
           }
