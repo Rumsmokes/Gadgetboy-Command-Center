@@ -1,10 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import QRCode from 'qrcode';
 import { fetchPublicAssetAsDataUrlCached, publicAsset } from '../lib/publicAsset';
 import { formatPhone } from '../lib/format';
 import { consumeWindowPayload } from '../lib/windowPayload';
 import { buildPatternSvg } from './releasePrint';
-const GOOGLE_REVIEW_URL = 'https://search.google.com/local/writereview?placeid=ChIJq5X1V5i7-IgR_P2o34Acjaw';
 function getPayload() {
   try {
     const stored = consumeWindowPayload('customerReceipt');
@@ -73,48 +71,8 @@ const CustomerReceiptWindow: React.FC = () => {
   const isSaleReceipt = receiptType === 'sale' || receiptType === 'sales';
 
   const [logoSrc, setLogoSrc] = useState<string>('');
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [qrReady, setQrReady] = useState(false);
-  const [qrError, setQrError] = useState<string>('');
   const didAutoPrintRef = useRef(false);
   const logoImgRef = useRef<HTMLImageElement | null>(null);
-  const qrImgRef = useRef<HTMLImageElement | null>(null);
-
-  const shouldRenderStatusQr = true;
-
-  useEffect(() => {
-    setQrDataUrl('');
-    setQrError('');
-    setQrReady(false);
-    if (!shouldRenderStatusQr) {
-      setQrReady(true);
-      return;
-    }
-
-    let alive = true;
-    (async () => {
-      try {
-        const dataUrl = await QRCode.toDataURL(GOOGLE_REVIEW_URL, {
-          width: 176,
-          margin: 1,
-          color: { dark: '#000000', light: '#ffffff' },
-          errorCorrectionLevel: 'M',
-        });
-        if (alive && dataUrl.startsWith('data:')) setQrDataUrl(dataUrl);
-      } catch (error: any) {
-        if (alive) {
-          const message = error?.message || 'The Google Review QR code could not be created. Please retry printing.';
-          setQrError(message);
-          if (flags.autoPrint && flags.silent) {
-            try { (window as any).api?.notifyCustomerReceiptQrFailed?.(message); } catch {}
-          }
-        }
-      } finally {
-        if (alive) setQrReady(true);
-      }
-    })();
-    return () => { alive = false; };
-  }, [flags.autoPrint, flags.silent]);
 
   useEffect(() => {
     let alive = true;
@@ -197,7 +155,7 @@ const CustomerReceiptWindow: React.FC = () => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!flags.autoPrint || flags.silent || !qrReady || (shouldRenderStatusQr && !qrDataUrl)) return;
+    if (!flags.autoPrint || flags.silent) return;
 
     if (didAutoPrintRef.current) return;
 
@@ -226,16 +184,16 @@ const CustomerReceiptWindow: React.FC = () => {
     }
 
     return () => window.clearTimeout(fallback);
-  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc, qrReady, qrDataUrl, shouldRenderStatusQr]);
+  }, [flags.autoPrint, flags.autoCloseMs, flags.silent, logoSrc]);
 
   useEffect(() => {
-    if (!flags.autoPrint || !flags.silent || !qrReady || (shouldRenderStatusQr && !qrDataUrl)) return;
+    if (!flags.autoPrint || !flags.silent) return;
 
     let cancelled = false;
     let fallbackTimer: number | undefined;
 
     const waitForImage = async () => {
-      const images = [logoImgRef.current, qrImgRef.current].filter(Boolean) as HTMLImageElement[];
+      const images = [logoImgRef.current].filter(Boolean) as HTMLImageElement[];
       await Promise.all(images.map((img) => {
         if (img.complete) return Promise.resolve();
         return new Promise<void>((resolve) => {
@@ -282,7 +240,7 @@ const CustomerReceiptWindow: React.FC = () => {
       cancelled = true;
       if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
     };
-  }, [flags.autoPrint, flags.silent, logoSrc, qrReady, qrDataUrl, shouldRenderStatusQr]);
+  }, [flags.autoPrint, flags.silent, logoSrc]);
 
   const items = Array.isArray((data as any).items) ? (data as any).items : [];
   const fullName = (data as any).customerName || (data as any).customer?.name || '';
@@ -447,9 +405,8 @@ const CustomerReceiptWindow: React.FC = () => {
         }
       .page { width: 210mm; margin: 0 auto 20px; background: #fff; padding: 12mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
       .page-inner { display: flex; flex-direction: column; min-height: 0; }
-        .brand { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(15rem,auto); align-items:center; gap:10px; margin-bottom:10px; }
+        .brand { display:grid; grid-template-columns:minmax(0,1fr) minmax(15rem,auto); align-items:center; gap:10px; margin-bottom:10px; }
         .brand-left { display:flex; min-width:0; align-items:center; gap:12px; }
-        .brand-center { display:grid; justify-items:center; gap:2px; margin-left:auto; margin-right:14px; }
         .brand-right { min-width:15rem; text-align:right; font-size: 10pt; line-height:1.25; }
         .brand-right > div, .brand-right > div > div { white-space:nowrap; }
         .brand-title { font-weight:700; letter-spacing:0.3px; }
@@ -502,11 +459,9 @@ const CustomerReceiptWindow: React.FC = () => {
         <div className="page-inner">
         <div className="toolbar">
           <button
-            disabled={shouldRenderStatusQr && (!qrReady || !qrDataUrl)}
             onClick={() => { try { window.focus(); window.print(); } catch {} }}
             style={{ background:'#111', color:'#39FF14', border:'1px solid #39FF14', padding:'6px 12px', borderRadius:6, fontSize:'10pt', cursor:'pointer' }}
           >Print</button>
-          {qrError ? <span style={{ color: '#b91c1c', fontWeight: 700, fontSize: '9pt' }}>{qrError}</span> : null}
           <button
             onClick={async () => {
               try {
@@ -545,14 +500,6 @@ const CustomerReceiptWindow: React.FC = () => {
               <div style={{ fontSize: '10pt', color: '#222' }}>(803) 708-0101 • gadgetboysc@gmail.com</div>
               <div className="slogan">The Solution Lives Here!</div>
             </div>
-          </div>
-          <div className="brand-center">
-            {shouldRenderStatusQr && qrDataUrl ? (
-              <>
-                <img ref={qrImgRef} src={qrDataUrl} alt="Google Review QR" style={{ width: 76, height: 76, display: 'block' }} />
-                <div style={{ fontSize: '7pt', color: '#555', textAlign: 'center', letterSpacing: '0.35px', fontWeight: 700 }}>SCAN ME</div>
-              </>
-            ) : null}
           </div>
           <div className="brand-right">
             {(data as any).workOrderType === 'durantReport' ? <><div style={{ fontWeight: 900, fontSize: '13pt' }}>Durant Report</div><div style={{ fontWeight: 800 }}>{(data as any).durantFullTransfer ? 'Full Transfer — diagnostic payment applies toward Durant bench fee' : 'Device remains with GadgetBoy'}</div></> : null}

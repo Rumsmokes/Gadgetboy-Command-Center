@@ -7000,25 +7000,11 @@ ipcMain.handle('open-customer-receipt', async (event: any, payload: any) => {
       startSilentPrint();
     };
 
-    const handleReceiptQrFailed = (failedEvent: any, message?: string) => {
-      if (failedEvent?.sender !== child.webContents) return;
-      cleanupReceiptReadyListener();
-      try {
-        if (!child.isDestroyed()) {
-          child.show();
-          child.focus();
-        }
-      } catch {}
-      try { child.webContents.send('customer-receipt:print-error', String(message || 'The QR code could not be created.')); } catch {}
-    };
-
     const cleanupReceiptReadyListener = () => {
       try { ipcMain.removeListener('customer-receipt:ready', handleReceiptReady); } catch {}
-      try { ipcMain.removeListener('customer-receipt:qr-failed', handleReceiptQrFailed); } catch {}
     };
 
     ipcMain.on('customer-receipt:ready', handleReceiptReady);
-    ipcMain.on('customer-receipt:qr-failed', handleReceiptQrFailed);
     child.once('closed', cleanupReceiptReadyListener);
   }
   return { ok: true };

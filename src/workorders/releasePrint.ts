@@ -107,8 +107,10 @@ export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?
     description: htmlEscape(li.description || '') + (amount.discount > 0 ? `<br><small>Line discount: -$${amount.discount.toFixed(2)}</small>` : ''),
     parts: amount.parts.toFixed(2), labor: amount.labor.toFixed(2),
   }; });
-  const columnCount = sanitizedItems.length > 10 ? 2 : 1;
-  const perCol = columnCount === 2 ? Math.ceil(sanitizedItems.length / 2) : sanitizedItems.length;
+  // Keep long repair lists in one flow so Chromium can paginate them. Two columns
+  // look compact for short forms, but can strand or clip rows at a page boundary.
+  const columnCount = 1;
+  const perCol = sanitizedItems.length;
   const columns: string[] = [];
   for (let c = 0; c < columnCount; c++) {
     const slice = sanitizedItems.slice(c * perCol, (c + 1) * perCol);
@@ -167,10 +169,12 @@ export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?
       .value-inline { font-size:10.5pt; color:#111; min-width:0; overflow-wrap:anywhere; }
       .value-block { font-size:10.5pt; color:#111; line-height:1.35; white-space:pre-wrap; }
       .items-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:8px; }
-      .items { width:100%; border-collapse:collapse; font-size:10pt; }
+      .items { width:100%; border-collapse:collapse; font-size:${sanitizedItems.length > 8 ? '8.75' : '10'}pt; }
       .items thead th { text-align:left; border-bottom:1px solid #d1d5db; padding:5px 6px; font-size:10pt; color:#222; font-weight:600; background:#f3f4f6; }
       .items tbody tr:nth-child(odd) { background: #fafafa; }
-      .items td { padding:5px 6px; border-bottom:1px solid #e5e7eb; }
+      .items td { padding:${sanitizedItems.length > 8 ? '3px 5px' : '5px 6px'}; border-bottom:1px solid #e5e7eb; }
+      .items thead { display:table-header-group; }
+      .items tr { break-inside:avoid-page; page-break-inside:avoid; }
       .items .item-desc { font-weight:600; color:#111; width:65%; }
       .items .item-num { text-align:right; white-space:nowrap; }
       .totals { width:48%; margin-left:auto; border:1px solid #d1d5db; border-radius:6px; padding:10px; }
@@ -179,6 +183,8 @@ export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?
       .terms { font-size:9pt; text-align:center; color:#222; }
       .circuit { position:absolute; top: 8mm; right: 8mm; pointer-events:none; opacity:0.06; }
       .final-block { break-inside: avoid-page; page-break-inside: avoid; margin-top:12px; }
+      .items-grid { break-inside:auto; page-break-inside:auto; }
+      .item-card { break-inside:avoid-page; page-break-inside:avoid; font-size:9pt; }
       .sig-row { display:flex; gap:16px; align-items:center; margin-top:12px; }
       .sig-line { flex:1; border-bottom:1px solid #000; height:24px; }
       .muted-label { color:#444; font-size:10pt; }
@@ -251,7 +257,7 @@ export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?
         </div>
       </div>
 
-      <div class="section muted-bg" style="page-break-inside: avoid;">
+      <div class="section muted-bg items-section">
         <div style="font-weight:600; margin-bottom:6px;">Problem</div>
         <div class="value-block">${htmlEscape(wo.problem)}</div>
       </div>

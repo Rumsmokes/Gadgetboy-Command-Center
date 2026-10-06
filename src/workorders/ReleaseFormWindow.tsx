@@ -196,11 +196,13 @@ const ReleaseFormWindow: React.FC = () => {
         .page { width: 210mm; min-height: 297mm; margin: 0 auto 20px; background: #fff; padding: 12mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
         .page-inner { display: flex; flex-direction: column; min-height: 0; }
         .section { border:1px solid #e5e7eb; border-radius: 6px; padding: 8px; margin-bottom: 10px; }
-        .footer { margin-top: auto; }
+        .footer { margin-top: 12px; break-inside: avoid-page; page-break-inside: avoid; }
+        .repairs-table thead { display: table-header-group; }
+        .repairs-table tr { break-inside: avoid-page; page-break-inside: avoid; }
         @media print {
-          .page { height: calc(297mm - 24mm); margin: 0 auto; box-shadow: none; padding: 0; }
-          .page-inner { padding: 12mm; padding-bottom: 95mm; }
-          .footer { position: absolute; left: 0; right: 0; bottom: 25mm; margin-top: 0; page-break-inside: avoid; }
+          .page { min-height: calc(297mm - 24mm); height: auto; margin: 0 auto; box-shadow: none; padding: 0; }
+          .page-inner { padding: 12mm; }
+          .footer { position: static; }
         }
       `}</style>
       <div className="page gb-release-page">
@@ -258,7 +260,7 @@ const ReleaseFormWindow: React.FC = () => {
 
   <div className="section" style={{ background: '#f8fafc' }}>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Repairs</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+        <table className="repairs-table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: items.length > 7 ? 10 : 11 }}>
           <thead>
             <tr>
               <th style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '4px 3px', fontSize: 11, color: '#666' }}>Description</th>
@@ -279,13 +281,6 @@ const ReleaseFormWindow: React.FC = () => {
                 </tr>
               );
             })}
-            {Array.from({ length: Math.max(0, 5 - items.length) }).map((_, idx) => (
-              <tr key={`filler-${idx}`}>
-                <td style={{ padding: '12px 3px', borderBottom: '1px solid #f1f5f9' }}>&nbsp;</td>
-                <td style={{ padding: '12px 3px', borderBottom: '1px solid #f1f5f9' }}>&nbsp;</td>
-                <td style={{ padding: '12px 3px', borderBottom: '1px solid #f1f5f9' }}>&nbsp;</td>
-              </tr>
-            ))}
           </tbody>
         </table>
       </div>

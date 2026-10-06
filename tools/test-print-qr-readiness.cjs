@@ -34,14 +34,20 @@ assert.match(salePrint, /Printing stopped because the sales-ticket QR code could
   'The legacy sales-ticket print path must stop instead of printing without a QR.');
 assert.doesNotMatch(salePrint, /print without QR/,
   'No sales-ticket print path may silently omit a failed QR.');
-assert.match(main, /customer-receipt:qr-failed/,
-  'A silent receipt whose QR fails must surface the receipt window instead of printing without a QR.');
-assert.match(receipt, /notifyCustomerReceiptQrFailed/,
-  'The receipt renderer must report a required QR failure to the Electron print window.');
-assert.match(receipt, /QRCode\.toDataURL\(GOOGLE_REVIEW_URL/,
-  'Customer receipts must generate their required Google Review QR locally.');
-assert.match(receipt, /!qrReady \|\| \(shouldRenderStatusQr && !qrDataUrl\)/,
-  'Customer receipt printing must wait for the locally generated review QR.');
+assert.doesNotMatch(receipt, /QRCode\.toDataURL/,
+  'Customer receipts must not generate any QR code.');
+assert.doesNotMatch(receipt, /Google Review QR|SCAN ME|GOOGLE_REVIEW_URL/,
+  'Customer receipts must not render a review or internal QR destination.');
+assert.doesNotMatch(receipt, /notifyCustomerReceiptQrFailed/,
+  'Customer receipts must not gate silent printing on QR creation.');
+assert.doesNotMatch(main, /customer-receipt:qr-failed/,
+  'Silent customer-receipt printing must not retain a QR-failure branch.');
+assert.match(releasePrint, /const columnCount = 1;/,
+  'Long repair item lists must flow across pages instead of being split into clipped columns.');
+assert.match(releasePrint, /items-section/,
+  'The long item list must be allowed to paginate independently of totals and acknowledgements.');
+assert.match(releaseWindow, /page-break-inside: avoid;/,
+  'Each printed repair line should remain intact when a long form carries onto another page.');
 assert.match(consult, /QR status URL timed out[\s\S]{0,80}5000/,
   'Consultation QR lookup must have the same bounded failure path.');
 assert.equal(

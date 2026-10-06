@@ -21,6 +21,9 @@ export type WorkOrderItemRow = {
   partSource?: string;
   distributorSku?: string;
   orderSourceUrl?: string;
+  partSourceKind?: 'stock' | 'order' | 'client';
+  addToEodCart?: boolean;
+  salvagedPart?: boolean;
   requiresOrder?: boolean;
   orderStatus?: 'needed' | 'ordered' | 'received' | 'in_stock';
   orderDate?: string;
@@ -51,7 +54,10 @@ export function customBuildResultToRow(result: CustomBuildItemResult, id: string
       partSource: String(result.partSource || '').trim(),
       distributorSku: String(result.distributorSku || '').trim(),
       orderSourceUrl: String(result.orderSourceUrl || '').trim(),
-      requiresOrder: orderStatus === 'needed' || orderStatus === 'ordered',
+      partSourceKind: result.partSourceKind || (result.addToEodCart || orderStatus === 'needed' || orderStatus === 'ordered' ? 'order' : 'stock'),
+      addToEodCart: result.addToEodCart ?? (orderStatus === 'needed' || orderStatus === 'ordered'),
+      ...(result.salvagedPart === true ? { salvagedPart: true } : {}),
+      requiresOrder: result.addToEodCart ?? (orderStatus === 'needed' || orderStatus === 'ordered'),
       orderStatus,
       orderDate: String(result.orderDate || ''),
       estimatedDeliveryDate: String(result.estimatedDeliveryDate || ''),
@@ -77,6 +83,9 @@ export function customBuildRowToPayload(row: WorkOrderItemRow): CustomBuildItemR
       partSource: String(row.partSource || ''),
       distributorSku: String(row.distributorSku || ''),
       orderSourceUrl: String(row.orderSourceUrl || ''),
+      partSourceKind: row.partSourceKind || (row.requiresOrder ? 'order' : 'stock'),
+      addToEodCart: row.addToEodCart ?? row.requiresOrder === true,
+      ...(row.salvagedPart === true ? { salvagedPart: true } : {}),
       orderStatus: row.orderStatus || (row.requiresOrder ? 'needed' : 'in_stock'),
       orderDate: String(row.orderDate || ''),
       estimatedDeliveryDate: String(row.estimatedDeliveryDate || ''),
