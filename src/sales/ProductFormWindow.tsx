@@ -98,13 +98,26 @@ const ProductFormWindow: React.FC = () => {
   }, [flags.autoPrint, flags.silent, logoSrc, qrResolved, saleRequiresQr, qrSrc]);
 
   const qrPending = saleRequiresQr && (!qrResolved || !qrSrc);
-  const fullName = data.customerName || '';
-  const phoneRaw = data.customerPhone || '';
+  const fullName = data.customerName || data.clientName || '';
+  const phoneRaw = data.customerPhone || data.phone || '';
   const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
-  const item = data.itemDescription || data.productDescription || '';
-  const qty = Number(data.quantity || 1);
-  const price = Number(data.price || data.total || 0);
-  const subtotal = qty * price;
+  const email = String(data.customerEmail || data.email || '').trim();
+  const printItems = Array.isArray(data.items) && data.items.length
+    ? data.items.map((row: any) => ({
+      description: String(row?.description || row?.itemDescription || row?.productDescription || 'Sale item'),
+      qty: Math.max(1, Number(row?.qty ?? row?.quantity ?? 1) || 1),
+      price: Math.max(0, Number(row?.price ?? row?.total ?? 0) || 0),
+    }))
+    : [{
+      description: String(data.itemDescription || data.productDescription || 'Sale item'),
+      qty: Math.max(1, Number(data.quantity || 1) || 1),
+      price: Math.max(0, Number(data.price || data.total || 0) || 0),
+    }];
+  const subtotal = Number(data.subTotal ?? data.subtotal ?? printItems.reduce((sum: number, row: any) => sum + row.qty * row.price, 0)) || 0;
+  const discount = Math.max(0, Number(data.discount || 0) || 0);
+  const taxes = Math.max(0, Number(data.taxes ?? data.totals?.tax ?? 0) || 0);
+  const total = Number(data.total ?? data.totals?.total ?? (subtotal - discount + taxes)) || 0;
+  const remaining = Math.max(0, Number(data.remaining ?? data.totals?.remaining ?? (total - Number(data.amountPaid || 0))) || 0);
 
   const terms = `By purchasing this product, the customer acknowledges and agrees that all sales are final unless otherwise stated by GadgetBoy Repair & Retail. Each device includes a 30-day limited warranty covering hardware defects or malfunctions not caused by misuse, physical or liquid damage, unauthorized repair attempts, or software alterations. The customer understands and accepts the condition of the device as described at the time of sale, including any cosmetic wear consistent with its grade (Fair, Good, or Excellent). This warranty applies only to the specific issue diagnosed and repaired or to the product as sold, and does not cover wear and tear, battery health degradation, accidental damage, or user-inflicted issues. GadgetBoy reserves the right to inspect and verify any warranty claim prior to service or replacement. The customer accepts responsibility for maintaining and using the product as intended, and understands that any tampering or modification voids the warranty.`;
 
@@ -152,7 +165,7 @@ const ProductFormWindow: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div><div style={{ color: '#666', fontSize: 11 }}>Customer</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{fullName}</div></div>
               <div><div style={{ color: '#666', fontSize: 11 }}>Phone</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{phone}</div></div>
-              <div><div style={{ color: '#666', fontSize: 11 }}>Item</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{item}</div></div>
+              <div><div style={{ color: '#666', fontSize: 11 }}>Email</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{email}</div></div>
               <div><div style={{ color: '#666', fontSize: 11 }}>Condition</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.condition || ''}</div></div>
             </div>
             <div style={{ marginTop: 6 }}>
@@ -172,12 +185,14 @@ const ProductFormWindow: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td style={{ padding: '4px 3px', borderBottom: '1px solid #f1f5f9', overflowWrap: 'anywhere' }}>{item}</td>
-                  <td style={{ padding: '4px 3px', borderBottom: '1px solid #f1f5f9', textAlign: 'right' }}>{qty}</td>
-                  <td style={{ padding: '4px 3px', borderBottom: '1px solid #f1f5f9', textAlign: 'right' }}>${price.toFixed(2)}</td>
-                </tr>
-                {Array.from({ length: 4 }).map((_, idx) => (
+                {printItems.map((row: any, idx: number) => (
+                  <tr key={`sale-item-${idx}`}>
+                    <td style={{ padding: '4px 3px', borderBottom: '1px solid #f1f5f9', overflowWrap: 'anywhere' }}>{row.description}</td>
+                    <td style={{ padding: '4px 3px', borderBottom: '1px solid #f1f5f9', textAlign: 'right' }}>{row.qty}</td>
+                    <td style={{ padding: '4px 3px', borderBottom: '1px solid #f1f5f9', textAlign: 'right' }}>${row.price.toFixed(2)}</td>
+                  </tr>
+                ))}
+                {Array.from({ length: Math.max(0, 5 - printItems.length) }).map((_, idx) => (
                   <tr key={`filler-${idx}`}>
                     <td style={{ padding: '12px 3px', borderBottom: '1px solid #f1f5f9' }}>&nbsp;</td>
                     <td style={{ padding: '12px 3px', borderBottom: '1px solid #f1f5f9' }}>&nbsp;</td>
@@ -218,13 +233,14 @@ const ProductFormWindow: React.FC = () => {
 
           {/* Totals under the list, aligned right */}
           <div className="totals">
-            <div className="row"><div className="label">Subtotal</div><div style={{ marginLeft: 'auto' }}>{subtotal.toFixed(2)}</div></div>
-            {data.discount ? <div className="row"><div className="label">Discount</div><div style={{ marginLeft: 'auto' }}>{Number(data.discount).toFixed(2)}</div></div> : null}
+            <div className="row"><div className="label">Subtotal</div><div style={{ marginLeft: 'auto' }}>${subtotal.toFixed(2)}</div></div>
+            {discount ? <div className="row"><div className="label">Discount</div><div style={{ marginLeft: 'auto' }}>-${discount.toFixed(2)}</div></div> : null}
             {data.taxRate ? <div className="row"><div className="label">Tax Rate</div><div style={{ marginLeft: 'auto' }}>{`${data.taxRate}%`}</div></div> : null}
-            <div className="row"><div className="label">Total</div><div style={{ marginLeft: 'auto' }}>{Number(data.totals?.total || subtotal).toFixed(2)}</div></div>
-            <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>{Number(data.amountPaid || 0).toFixed(2)}</div></div>
+            {taxes ? <div className="row"><div className="label">Tax</div><div style={{ marginLeft: 'auto' }}>${taxes.toFixed(2)}</div></div> : null}
+            <div className="row"><div className="label">Total</div><div style={{ marginLeft: 'auto' }}>${total.toFixed(2)}</div></div>
+            <div className="row"><div className="label">Amount Paid</div><div style={{ marginLeft: 'auto' }}>${Number(data.amountPaid || 0).toFixed(2)}</div></div>
             <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '8px 0' }} />
-            <div className="row"><div className="label"><strong>Remaining</strong></div><div style={{ marginLeft: 'auto' }}><strong>{Number(data.totals?.remaining || 0).toFixed(2)}</strong></div></div>
+            <div className="row"><div className="label"><strong>Remaining</strong></div><div style={{ marginLeft: 'auto' }}><strong>${remaining.toFixed(2)}</strong></div></div>
           </div>
 
           {/* Terms and signature removed per request */}
