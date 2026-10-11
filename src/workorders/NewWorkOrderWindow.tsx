@@ -1626,8 +1626,15 @@ const NewWorkOrderWindow: React.FC = () => {
           }
         }
 
-        const initialCheckoutReleaseForm = workOrderPersisted && effectiveId > 0 && appliedToWorkOrder > 0 && prevPayments.length === 0;
-        if (initialCheckoutReleaseForm) {
+        const diagnosticOnlyIntake = Boolean(nextWo.diagnosticSelection || wo.diagnosticSelection)
+          && (!Array.isArray(nextWo.items) || nextWo.items.length === 0);
+        const automaticDiagnosticReleaseForm = workOrderPersisted
+          && effectiveId > 0
+          && appliedToWorkOrder > 0
+          && prevPayments.length === 0
+          && diagnosticOnlyIntake;
+        const requestedReleaseForm = result.printReleaseForm === true;
+        if (workOrderPersisted && effectiveId > 0 && (automaticDiagnosticReleaseForm || requestedReleaseForm)) {
           try {
             let assignedTechnicianName = '';
             try {

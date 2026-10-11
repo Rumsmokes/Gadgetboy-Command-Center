@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.35 (2026-10-11)
+
+- Keeps Quote Preview and Option Viewer open when Esc exits their customer-display fullscreen mode, returning to the same editor instead of Command Center.
+- Presents Option Viewer images as a polished, vertically stacked customer display with clear option labels.
+- Unifies Command Center Collected Today and EOD around the complete, deduplicated payment ledger so later checkout events are not omitted.
+- Limits automatic work-order release-form printing to a first diagnostic-only payment, adds an optional Print release form checkout control, and identifies diagnostic-only intake on printed forms.
+- Moves release-form check-in time to the header, compacts device details, and keeps repair items visually dominant.
+
 ## v0.1.2 (2026-09-18)
 
 - Adds a responsive Move To submenu to Command Center work-order right-click and touch long-press menus.

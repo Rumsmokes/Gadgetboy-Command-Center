@@ -164,6 +164,8 @@ const WorkOrderSidebar: React.FC<Props> = ({ workOrder, onChange, hideStatus = f
                     notes: (workOrder as any).internalNotes || '',
                     workOrderType: (workOrder as any).workOrderType || '',
                     durantFullTransfer: !!(workOrder as any).durantFullTransfer,
+                    diagnosticSelection: (workOrder as any).diagnosticSelection || null,
+                    checkInAt: (workOrder as any).checkInAt || '',
                   };
 
                   await printReleaseForm(wo, { autoCloseMs: 0, autoPrint: true });

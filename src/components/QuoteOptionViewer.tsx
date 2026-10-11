@@ -80,17 +80,20 @@ export default function QuoteOptionViewer({ onClose }: { onClose: () => void }) 
         )}
         <button className="rounded border border-violet-500 bg-violet-950 px-4 py-2 font-semibold" onClick={() => void fullscreen()}>Fullscreen</button>
         <button className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 font-semibold" onClick={onClose}>Close</button>
-      </header><style>{`.quote-option-viewer:fullscreen .quote-option-toolbar,.quote-option-viewer.gb-client-display-fullscreen .quote-option-toolbar{display:none}`}</style>
+      </header><style>{`.quote-option-viewer:fullscreen .quote-option-toolbar,.quote-option-viewer.gb-client-display-fullscreen .quote-option-toolbar{display:none}.quote-option-viewer:fullscreen .quote-option-presentation,.quote-option-viewer.gb-client-display-fullscreen .quote-option-presentation{padding:32px 8vw 56px}`}</style>
 
       {presenting ? (
-        <main className="flex-1 overflow-y-auto bg-zinc-100 p-3 sm:p-6">
-          <div className="mx-auto grid w-full max-w-[1800px] grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        <main className="quote-option-presentation flex-1 overflow-y-auto bg-gradient-to-b from-zinc-100 to-zinc-200 p-3 sm:p-6">
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
             {images.map((image, index) => (
-              <article key={image.id} className="overflow-hidden rounded-2xl border border-zinc-300 bg-white shadow-lg">
-                <div className="flex min-h-[320px] items-center justify-center bg-white p-3 sm:min-h-[440px]">
-                  <img src={image.url} alt={image.name || `Option ${index + 1}`} className="max-h-[70vh] w-full object-contain" />
+              <article key={image.id} className="overflow-hidden rounded-3xl border border-zinc-300 bg-white shadow-[0_18px_50px_rgba(24,24,27,0.18)]">
+                <div className="flex items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-5 py-4">
+                  <span className="rounded-full bg-[#39ff14] px-3 py-1 text-xs font-black tracking-[0.16em] text-zinc-950">OPTION {String(index + 1).padStart(2, '0')}</span>
+                  <h3 className="min-w-0 truncate text-xl font-bold capitalize text-zinc-900">{image.name || `Option ${index + 1}`}</h3>
                 </div>
-                <div className="border-t border-zinc-200 px-4 py-3 text-center text-lg font-bold capitalize text-zinc-900">{image.name || `Option ${index + 1}`}</div>
+                <div className="flex min-h-[340px] items-center justify-center bg-white p-4 sm:min-h-[520px] sm:p-8">
+                  <img src={image.url} alt={image.name || `Option ${index + 1}`} className="max-h-[72vh] w-full object-contain" />
+                </div>
               </article>
             ))}
           </div>

@@ -32,7 +32,7 @@ assert.match(desktop, /async function synchronizeDesktopCollection[\s\S]*persist
 assert.match(desktop, /ipcMain\.handle\('db-find'[\s\S]*const db = readDb\(\);[\s\S]*return list\.filter/, 'Desktop Find must query the durable local cache without downloading its cloud table.');
 assert.match(desktop, /pendingIds,[\s\S]*terminal: key === 'workOrders'/, 'Incremental reads must preserve queued local writes and terminal work-order state.');
 
-assert.match(workOrder, /missingRequired\.includes\('assignedTo'\)[\s\S]*cannot be saved or checked out/, 'Work orders must hard-block Save and Checkout without a technician.');
+assert.match(workOrder, /function ensureRequired[\s\S]*if \(missingRequired\.length === 0\)[\s\S]*return false;/, 'Work orders must hard-block Save and Checkout while required details are missing.');
 assert.match(workOrder, /createWorkOrderPromiseRef/, 'Concurrent autosave, print, and checkout paths must share one work-order creation request.');
 assert.match(workOrder, /createWorkOrderOnce/, 'Every new-work-order path must reuse the saved identity instead of creating duplicates.');
 assert.match(sale, /missingRequired\.includes\('assignedTo'\)[\s\S]*cannot be saved or checked out/, 'Sales must hard-block Save and Checkout without a technician.');

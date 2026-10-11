@@ -3,7 +3,7 @@ import { computeTotals } from '../lib/calc';
 import { useAutosave } from '../lib/useAutosave';
 import { listTechnicians, technicianDisplayName } from '../lib/admin';
 import { allocateCheckoutAdditionalCosts, applyPurchaseQueueRemovalToItems, calculateSalesTax, collectOrderCartRows, filterLedgerBackedOrderCartRows, groupOrderCartRows, SC_SALES_TAX_RATE, type OrderCartRow } from '../lib/orderAccounting';
-import { buildReportingLedger } from '../lib/reportingAccounting';
+import { buildReportingLedger, collectReportingPayments } from '../lib/reportingAccounting';
 import { derivePartVendorFromUrl, normalizePartInventoryTitle, normalizePartOrderUrl, scrapePartUrl } from '../lib/partOrdering';
 import { applyDeliveredInventoryPurchase, buildInventoryReorderPurchase, inventoryLowStockFingerprint, inventoryReorderQuantity, isInventoryLowStock } from '../lib/inventoryReorder';
 import { DEFAULT_COMMISSION_SETTINGS, allocateCommissionPool, normalizeCommissionSettings, selectedSalesCommissionTechnicians, technicianCommissionId, type CommissionSettings } from '../lib/commission';
@@ -489,27 +489,7 @@ function paymentFallbackDate(record: any): Date | null {
 }
 
 function collectPayments(record: any) {
-  if (!record || typeof record !== 'object') return [];
-  const existing = Array.isArray(record.payments)
-    ? [...record.payments]
-    : Array.isArray(record.paymentHistory)
-      ? [...record.paymentHistory]
-      : Array.isArray(record.paymentLogs)
-        ? [...record.paymentLogs]
-        : [];
-  const { paid } = resolveTotals(record);
-  const recorded = round2(existing.reduce((sum: number, payment: any) => sum + paymentAppliedAmount(payment), 0));
-  const missing = round2((Number(paid || 0) || 0) - recorded);
-  if (missing <= 0.009) return existing;
-  const anchor = paymentFallbackDate(record);
-  if (!anchor) return existing;
-  return [{
-    amount: missing,
-    applied: missing,
-    paymentType: String(record?.paymentType || 'Legacy'),
-    at: anchor.toISOString(),
-    inferred: true,
-  }, ...existing];
+  return collectReportingPayments(record);
 }
 
 function paymentEventDate(p: any): Date | null {

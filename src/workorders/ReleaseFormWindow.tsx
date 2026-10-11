@@ -167,7 +167,21 @@ const ReleaseFormWindow: React.FC = () => {
     return () => { cancelled = true; };
   }, [logoSrc, qrReady, qrDataUrl]);
 
-  const items = Array.isArray(data.items) ? data.items : [];
+  const storedItems = Array.isArray(data.items) ? data.items : [];
+  const diagnosticSelection = data.diagnosticSelection && typeof data.diagnosticSelection === 'object'
+    ? data.diagnosticSelection
+    : null;
+  const diagnosticAmount = Number(diagnosticSelection?.amount || 0) || 0;
+  const items = storedItems.length
+    ? storedItems
+    : diagnosticSelection
+      ? [{
+          id: 'diagnostic-fee',
+          repair: `Diagnostic fee — ${String(diagnosticSelection.label || 'Diagnostic')}`,
+          parts: 0,
+          labor: diagnosticAmount,
+        }]
+      : [];
   const fullName = data.customerName || data.customer?.name || '';
   const phoneRaw = data.customerPhone || data.customer?.phone || '';
   const phone = formatPhone(String(phoneRaw || '')) || String(phoneRaw || '');
@@ -196,6 +210,8 @@ const ReleaseFormWindow: React.FC = () => {
         .page { width: 210mm; min-height: 297mm; margin: 0 auto 20px; background: #fff; padding: 12mm; box-shadow: 0 2px 20px rgba(0,0,0,0.12); box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
         .page-inner { display: flex; flex-direction: column; min-height: 0; }
         .section { border:1px solid #e5e7eb; border-radius: 6px; padding: 8px; margin-bottom: 10px; }
+        .device-field-label { color:#666; font-size:10px; }
+        .device-field-value { border-bottom:1px solid #e5e7eb; font-size:11px; line-height:1.25; min-height:15px; }
         .footer { margin-top: 12px; break-inside: avoid-page; page-break-inside: avoid; }
         .repairs-table thead { display: table-header-group; }
         .repairs-table tr { break-inside: avoid-page; page-break-inside: avoid; }
@@ -232,6 +248,7 @@ const ReleaseFormWindow: React.FC = () => {
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#111' }}>WO: {data.id ? String(data.id).padStart(6, '0') : '—'}</div>
           <div style={{ fontSize: 11, color: '#666' }}>Date: {new Date().toLocaleDateString()}</div>
+          {checkInDisplay ? <div style={{ fontSize: 11, color: '#666' }}>Check-In: {checkInDisplay}</div> : null}
           {fullName ? <div style={{ fontSize: 11, color: '#111', marginTop: 4 }}><strong>Client:</strong> {fullName}</div> : null}
           {phone ? <div style={{ fontSize: 11, color: '#111' }}><strong>Phone:</strong> {phone}</div> : null}
           {phoneAlt ? <div style={{ fontSize: 11, color: '#111' }}><strong>Alt:</strong> {phoneAlt}</div> : null}
@@ -242,15 +259,14 @@ const ReleaseFormWindow: React.FC = () => {
   <div id="release-device-intake" className="section" style={{ background: '#f8fafc' }}>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Device Intake</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Device Category</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.productCategory || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Device Name</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.productDescription || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Model</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.model || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Serial #</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.serial || data.serialNumber || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Password / PIN</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.password || ''}</div></div>
-          {patternDisplay ? <div><div style={{ color: '#666', fontSize: 11 }}>Unlock Pattern</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{patternDisplay}</div></div> : null}
-          {accessories ? <div><div style={{ color: '#666', fontSize: 11 }}>Accessories</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{accessories}</div></div> : null}
-          <div><div style={{ color: '#666', fontSize: 11 }}>Assigned Technician</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{data.assignedTechnicianName || data.assignedTo || ''}</div></div>
-          <div><div style={{ color: '#666', fontSize: 11 }}>Check-In</div><div style={{ borderBottom: '1px solid #e5e7eb' }}>{checkInDisplay}</div></div>
+          <div><div className="device-field-label">Device Category</div><div className="device-field-value">{data.productCategory || ''}</div></div>
+          <div><div className="device-field-label">Device Name</div><div className="device-field-value">{data.productDescription || ''}</div></div>
+          <div><div className="device-field-label">Model</div><div className="device-field-value">{data.model || ''}</div></div>
+          <div><div className="device-field-label">Serial #</div><div className="device-field-value">{data.serial || data.serialNumber || ''}</div></div>
+          <div><div className="device-field-label">Password / PIN</div><div className="device-field-value">{data.password || ''}</div></div>
+          {patternDisplay ? <div><div className="device-field-label">Unlock Pattern</div><div className="device-field-value">{patternDisplay}</div></div> : null}
+          {accessories ? <div><div className="device-field-label">Accessories</div><div className="device-field-value">{accessories}</div></div> : null}
+          <div><div className="device-field-label">Assigned Technician</div><div className="device-field-value">{data.assignedTechnicianName || data.assignedTo || ''}</div></div>
         </div>
         <div style={{ marginTop: 6 }}>
           <div style={{ color: '#666', fontSize: 11 }}>Reported Problem</div>

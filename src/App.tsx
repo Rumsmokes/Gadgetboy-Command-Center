@@ -122,7 +122,26 @@ function ModalShell({ entry, zIndex, onClose }: { entry: ModalEntry; zIndex: num
   // Close on Escape – only the top-most modal should fire.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const leavePresentation = async () => {
+        const api: any = (window as any).api;
+        try {
+          if (api?.getFullScreen && await api.getFullScreen()) {
+            await api.setFullScreen(false);
+            return;
+          }
+        } catch {
+          // Fall through to the browser fullscreen state or normal modal close.
+        }
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+          return;
+        }
+        onClose();
+      };
+      void leavePresentation();
     };
     window.addEventListener('keydown', handler, { capture: true });
     return () => window.removeEventListener('keydown', handler, { capture: true });

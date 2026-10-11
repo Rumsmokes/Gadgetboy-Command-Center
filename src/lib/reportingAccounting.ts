@@ -81,11 +81,23 @@ function paymentRows(value: any): any[] {
 }
 
 export function recordedPaymentRows(record: any): any[] {
+  const seen = new Set<string>();
+  const rows: any[] = [];
   for (const value of [record?.payments, record?.paymentHistory, record?.paymentLogs]) {
-    const rows = paymentRows(value);
-    if (rows.length) return rows;
+    for (const payment of paymentRows(value)) {
+      const explicitId = String(payment?.id || payment?.paymentId || payment?.transactionId || payment?.reference || '').trim();
+      const key = explicitId || [
+        payment?.at ?? payment?.date ?? payment?.createdAt ?? payment?.paidAt ?? payment?.timestamp ?? payment?.loggedAt ?? '',
+        payment?.applied ?? payment?.amount ?? payment?.tender ?? payment?.paid ?? '',
+        payment?.change ?? payment?.changeDue ?? '',
+        payment?.paymentType ?? payment?.method ?? payment?.type ?? '',
+      ].map(value => String(value).trim()).join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(payment);
+    }
   }
-  return [];
+  return rows;
 }
 
 export function collectReportingPayments(record: any) {

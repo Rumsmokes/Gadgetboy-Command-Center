@@ -23,6 +23,7 @@ export interface CheckoutResult {
   appliedLabor?: number;
   closeParent: boolean;
   printReceipt: boolean;
+  printReleaseForm: boolean;
   markClosed: boolean;
 }
 
@@ -60,6 +61,7 @@ const CheckoutWindow: React.FC = () => {
   const [paymentType, setPaymentType] = useState<PaymentType | ''>('');
   const [closeParent, setCloseParent] = useState(true);
   const [printReceipt, setPrintReceipt] = useState<boolean>(false); // Receipt starts unchecked
+  const [printReleaseForm, setPrintReleaseForm] = useState<boolean>(false);
   const [markClosed, setMarkClosed] = useState(false);
   const [completionMessage, setCompletionMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -202,6 +204,7 @@ const CheckoutWindow: React.FC = () => {
       appliedLabor: hasPayFor ? allocation.appliedLabor : undefined,
       closeParent,
       printReceipt,
+      printReleaseForm,
       markClosed,
     };
     return result;
@@ -462,9 +465,10 @@ const CheckoutWindow: React.FC = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-2 text-xs min-[420px]:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 text-xs min-[420px]:grid-cols-2 min-[700px]:grid-cols-4">
           <label className={`gb-checkout-option-card flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 font-semibold ${closeParent ? 'border-purple-400/70 bg-purple-500/10' : 'border-zinc-800 bg-zinc-900/70'}`}><input type="checkbox" checked={closeParent} onChange={e => setCloseParent(e.target.checked)} /> Close window</label>
           <label className={`gb-checkout-option-card flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 font-semibold ${printReceipt ? 'border-blue-400/70 bg-blue-500/10' : 'border-zinc-800 bg-zinc-900/70'}`}><input type="checkbox" checked={printReceipt} onChange={e => setPrintReceipt(e.target.checked)} /> Print receipt</label>
+          <label className={`gb-checkout-option-card flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 font-semibold ${printReleaseForm ? 'border-[#39ff14]/70 bg-[#39ff14]/10' : 'border-zinc-800 bg-zinc-900/70'}`}><input type="checkbox" checked={printReleaseForm} onChange={e => setPrintReleaseForm(e.target.checked)} /> Print release form</label>
           <label className={`gb-checkout-option-card flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 font-semibold ${markClosed ? 'border-amber-400/70 bg-amber-500/10' : 'border-zinc-800 bg-zinc-900/70'}`}><input type="checkbox" checked={markClosed} onChange={e => setMarkClosed(e.target.checked)} /> Mark closed</label>
         </div>
 

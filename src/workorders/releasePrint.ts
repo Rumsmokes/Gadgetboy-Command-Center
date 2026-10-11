@@ -29,6 +29,8 @@ export type WorkOrder = {
   notes?: string;
   workOrderType?: string;
   durantFullTransfer?: boolean;
+  diagnosticSelection?: { label?: string; amount?: number } | null;
+  checkInAt?: string;
 };
 
 import { fetchPublicAssetAsDataUrlCached } from '../lib/publicAsset';
@@ -103,7 +105,13 @@ export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?
   const displayPhone = formatPhone(String(wo.phone || '')) || String(wo.phone || '');
   const displayPhoneAlt = formatPhone(String(wo.phoneAlt || '')) || String(wo.phoneAlt || '');
   const itemList = Array.isArray(wo.items) ? wo.items : [];
-  const sanitizedItems = itemList.map(li => { const amount = discountedWorkOrderItemAmounts(li); return {
+  const diagnostic = wo.diagnosticSelection;
+  const displayItems = itemList.length
+    ? itemList
+    : diagnostic
+      ? [{ description: `Diagnostic fee — ${String(diagnostic.label || 'Diagnostic')}`, parts: 0, labor: Number(diagnostic.amount || 0) }]
+      : [];
+  const sanitizedItems = displayItems.map(li => { const amount = discountedWorkOrderItemAmounts(li); return {
     description: htmlEscape(li.description || '') + (amount.discount > 0 ? `<br><small>Line discount: -$${amount.discount.toFixed(2)}</small>` : ''),
     parts: amount.parts.toFixed(2), labor: amount.labor.toFixed(2),
   }; });
@@ -131,7 +139,7 @@ export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?
           </tr>
         </thead>
         <tbody>
-          ${body || '<tr><td colspan="3" style="padding:6px 8px; color:#777;">No items</td></tr>'}
+          ${body || '<tr><td colspan="3" style="padding:6px 8px; color:#777;">No repair line items</td></tr>'}
         </tbody>
       </table>
     `);
@@ -234,6 +242,7 @@ export function buildHtml(wo: WorkOrder, opts?: { logoSrc?: string; autoCloseMs?
           ${wo.workOrderType === 'durantReport' ? `<div style="font-size:13pt;font-weight:900;letter-spacing:.5px;">Durant Report</div>${wo.durantFullTransfer ? '<div style="font-weight:800;">Full Transfer</div>' : ''}` : ''}
           <div><strong>Invoice:</strong> ${htmlEscape(invoiceDisplay)}</div>
           <div><strong>Date/Time:</strong> ${htmlEscape(dateStr)}</div>
+          ${wo.checkInAt ? `<div><strong>Check-In:</strong> ${htmlEscape(new Date(wo.checkInAt).toLocaleString())}</div>` : ''}
           <div><strong>Client:</strong> ${htmlEscape(wo.clientName)}</div>
           <div><strong>Phone:</strong> ${htmlEscape(displayPhone)}</div>
           ${displayPhoneAlt ? `<div><strong>Alt Phone:</strong> ${htmlEscape(displayPhoneAlt)}</div>` : ''}
