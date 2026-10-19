@@ -133,6 +133,8 @@ export function mapCloudRow(type: UpdateType, row: any): any {
     promisedAt: row.promised_at || (/promise/i.test(String(row.status_update || '')) ? row.estimated_date || '' : ''),
     promiseNote: row.promise_note || (/promise/i.test(String(row.status_update || '')) ? row.tech_notes || '' : ''),
     pickupReminderSentAt: row.pickup_reminder_sent_at || '',
+    storageFeeStartedAt: row.storage_fee_started_at || '',
+    storageFeeLastAccruedAt: row.storage_fee_last_accrued_at || '',
     pickedUpAt: row.picked_up_at || '',
     pickedUpBy: row.picked_up_by || '',
     workflowStage: row.workflow_stage || '',

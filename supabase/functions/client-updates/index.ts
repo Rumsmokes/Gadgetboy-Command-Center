@@ -282,15 +282,17 @@ Deno.serve(async (req: Request) => {
     if (statusKey === "schedule_pickup" && (!estimatedDate || !estimatedTime)) throw httpError(400, "Enter the scheduled pickup date and time.");
     if(statusKey==='picked_up') { const remaining=Number((record.totals as JsonRecord)?.remaining || record.balance || 0); if(remaining>0 && body.managerOverride!==true) throw httpError(409,`This ticket still has a $${remaining.toFixed(2)} balance. Complete checkout or use a manager override.`); }
     if(statusKey==='approve_storage_fee'){
-      const anchor=new Date(record.scheduled_pickup_at||record.pickup_ready_at||record.repair_completion_date||0).getTime();
-      const days=anchor?Math.floor(Math.max(0,Date.now()-anchor)/86400000):0, fee=Math.max(0,record.scheduled_pickup_at?days:days-7)*25;
-      if(fee<=0) throw httpError(409,'No storage fee is currently due.');
+      const now=new Date();
+      const priorAccrual=new Date(record.storage_fee_last_accrued_at||record.storage_fee_started_at||0).getTime();
+      const started=!Number.isFinite(priorAccrual)||priorAccrual<=0;
+      const days=started?1:Math.floor(Math.max(0,now.getTime()-priorAccrual)/86400000);
+      const fee=days*25;
+      if(fee<=0) throw httpError(409,'Today’s storage fee has already been added. The next $25 accrues after a full day.');
       const items=Array.isArray(record.items)?record.items:[];
-      if(items.some((item:JsonRecord)=>safeString(item.feeType)==='storage')) throw httpError(409,'A storage fee is already on this ticket.');
       const totals=(record.totals as JsonRecord)||{}, nextTotal=Number(totals.total||0)+fee, nextRemaining=Number(totals.remaining||0)+fee;
-      const {data:feeRows,error:feeError}=await admin.from(table).update({items:[...items,{id:`storage-${Date.now()}`,repair:'Storage Fee',description:`Storage Fee (${days-7} days × $25)`,labor:fee,parts:0,taxable:false,feeType:'storage'}],totals:{...totals,total:nextTotal,remaining:nextRemaining},storage_fee_reviewed_at:new Date().toISOString()}).eq('shop_id',profile.shop_id).eq('legacy_id',legacyRecordId).select('*');
+      const {data:feeRows,error:feeError}=await admin.from(table).update({items:[...items,{id:`storage-${Date.now()}`,repair:'Storage Fee',description:`Storage Fee (${days} day${days===1?'':'s'} × $25)`,labor:fee,parts:0,taxable:false,feeType:'storage',accruedAt:now.toISOString()}],totals:{...totals,total:nextTotal,remaining:nextRemaining},storage_fee_started_at:record.storage_fee_started_at||now.toISOString(),storage_fee_last_accrued_at:now.toISOString(),storage_fee_reviewed_at:now.toISOString()}).eq('shop_id',profile.shop_id).eq('legacy_id',legacyRecordId).select('*');
       if(feeError||!feeRows?.[0]) throw httpError(500,'The storage fee could not be added.');
-      return json(200,{ok:true,statusSaved:true,deliveryStatus:'internal',message:`$${fee.toFixed(2)} storage fee approved and added.`,record:feeRows[0]});
+      return json(200,{ok:true,statusSaved:true,deliveryStatus:'internal',message:`$${fee.toFixed(2)} storage fee added.`,record:feeRows[0]});
     }
     if(statusKey==='items_delivered'){
       const indexes=Array.isArray(body.itemIndexes)?body.itemIndexes.map(Number).filter(Number.isInteger):[];

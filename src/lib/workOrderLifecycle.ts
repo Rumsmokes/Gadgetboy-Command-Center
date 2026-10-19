@@ -86,6 +86,13 @@ export function buildLegacyClosePatch(classification: CleanupClassification, now
   return { status: 'closed', legacyCleanup: { rule: classification.reason, ageDays: classification.ageDays, diagnosticOnlyDays: settings.diagnosticOnlyDays, closeAllDays: settings.closeAllDays, closedAt: now.toISOString() }, updatedAt: now.toISOString() };
 }
 export function isRepairNotPossible(workOrder: any) { return /repair not possible|not repairable|cannot be repaired|unrepairable/.test(text(workOrder?.repairStatus || workOrder?.workflowStatus || workOrder?.status)); }
+export function storageFeeAccrual(workOrder: any, now = new Date()) {
+  const lastValue = workOrder?.storageFeeLastAccruedAt || workOrder?.storage_fee_last_accrued_at || workOrder?.storageFeeStartedAt || workOrder?.storage_fee_started_at;
+  const last = new Date(lastValue || 0).getTime();
+  if (!Number.isFinite(last) || last <= 0) return { amount: 25, days: 1, started: true };
+  const days = Math.floor(Math.max(0, now.getTime() - last) / 86400000);
+  return { amount: days * 25, days, started: false };
+}
 export function pickupLifecycleFor(workOrder:any, now=new Date(), input?:any):PickupLifecycle {
   const settings=normalizeCleanupSettings(input);
   const closed=text(workOrder?.status)==='closed' || !!(workOrder?.pickedUpAt || workOrder?.clientPickupDate || workOrder?.checkoutDate);

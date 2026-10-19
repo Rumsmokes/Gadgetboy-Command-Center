@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.37 (2026-10-19)
+
+- Corrects QR-approved storage fees: the approval starts with exactly $25, then the server adds one further $25 charge only after each completed day.
+- Stores the fee-accrual watermark through desktop and Android synchronization so a stale device cannot replay an old fee calculation.
+- Deploys and verifies the authenticated client-update function, active QR routing, release-form QR rendering, receipt QR rendering, and the client-update email outbox contract.
+
 ## v0.1.36 (2026-10-19)
 
 - Moves Opening / Closing Checklist access from Command Center into Admin, with editable opening and closing due times and checklist items.

@@ -75,6 +75,7 @@ jobs:
           npm run test:sale-product-picker
           npm run test:quote-sales-prompt
           npm run test:client-update-api
+          npm run test:storage-fee-accrual
           npm run test:mobile-long-press
           npm run test:mobile-navigation
           npm run test:mobile-command-center
