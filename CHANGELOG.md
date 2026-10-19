@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.36 (2026-10-19)
+
+- Moves Opening / Closing Checklist access from Command Center into Admin, with editable opening and closing due times and checklist items.
+- Requires the due opening or closing checklist before Command Center can be used, including after relaunch or sign-in; defaults are 10:00 AM and 6:50 PM.
+- Merges client-contact follow-up into opening, adds Collect and Send Cart total to opening, and adds Check Orders to closing.
+- Adds a checklist-specific missed-day badge with rectification actions, beginning only on the day this new tracking system starts and retaining the last 30 days.
+
 ## v0.1.35 (2026-10-11)
 
 - Keeps Quote Preview and Option Viewer open when Esc exits their customer-display fullscreen mode, returning to the same editor instead of Command Center.

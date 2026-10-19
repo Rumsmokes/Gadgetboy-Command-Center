@@ -116,6 +116,7 @@ jobs:
           npm run test:checkout-layout
           npm run test:checkout-completion
           npm run test:approved-release-form-and-display
+          npm run test:scheduled-daily-operations
           npm run test:checkout-delivery
           npm run test:command-center-repair-details
           npm run test:command-center-workflow

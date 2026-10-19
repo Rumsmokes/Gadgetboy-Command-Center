@@ -129,6 +129,7 @@ const Toolbar: React.FC<{
                 { label: 'Inventory',       action: () => openAdmin('inventory') },
                 { label: 'Reporting',       action: () => openAdmin('reporting') },
                 { label: 'Technicians',     action: () => openAdmin('technicians') },
+                { label: 'Opening / Closing Checklist', action: () => dispatchOpenModal('dailyOperationsSettings') },
                 { label: 'Data Tools',      action: () => openAdmin('dataTools') },
                 { label: 'Dev Menu',        action: () => openAdmin('devMenu') },
               ].map(item => (

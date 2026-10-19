@@ -60,6 +60,7 @@ const TechniciansWindow = React.lazy(() => import('../components/TechniciansWind
 const ClientUpdatePanel = React.lazy(() => import('../workorders/ClientUpdatePanel'));
 const GameMenuWindow = React.lazy(() => import('../components/GameMenuWindow'));
 const RepairTutorialWindow = React.lazy(() => import('../repairs/RepairTutorialWindow'));
+const OpeningChecklistSettings = React.lazy(() => import('../components/DailyOperationsWindow').then(module => ({ default: module.OpeningChecklistSettings })));
 
 type StaffProfile = {
   id: string;
@@ -384,6 +385,7 @@ function MobileModalContent({ type, onClose }: { type: string; onClose: () => vo
     case 'deviceCategories': return <DeviceCategoriesWindow />;
     case 'customBuildItem': return <CustomBuildItemWindow />;
     case 'technicians': return <TechniciansWindow onClose={onClose} />;
+    case 'dailyOperationsSettings': return <OpeningChecklistSettings />;
     case 'feedback': return <FeedbackWindow />;
     case 'gameMenu': return <GameMenuWindow />;
     default: return <div className="mobile-empty-state">Unknown window: {type}</div>;
@@ -1470,6 +1472,7 @@ function MobileDrawer(props: {
     ['repairCategories', 'Repairs'],
     ['inventory', 'Inventory'],
     ['reporting', 'Reporting'],
+    ['dailyOperationsSettings', 'Opening / Closing Checklist'],
     ['dataTools', 'Data Tools'],
   ] as const;
   const toggleSection = (section: string) => setOpenSections((current) => ({ ...current, [section]: !current[section] }));

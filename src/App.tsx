@@ -63,6 +63,8 @@ const CustomBuildItemWindow     = React.lazy(() => import('./workorders/CustomBu
 const ClientUpdatePanel         = React.lazy(() => import('./workorders/ClientUpdatePanel'));
 const FeedbackWindow            = React.lazy(() => import('./components/FeedbackWindow'));
 const GameMenuWindow            = React.lazy(() => import('./components/GameMenuWindow'));
+const DailyOperationsWindow     = React.lazy(() => import('./components/DailyOperationsWindow'));
+const OpeningChecklistSettings  = React.lazy(() => import('./components/DailyOperationsWindow').then(module => ({ default: module.OpeningChecklistSettings })));
 
 // ── map api method names → modal type ─────────────────────────────────────
 const API_TO_MODAL: Record<string, string> = {
@@ -239,6 +241,7 @@ function ModalContent({ type, onClose }: { type: string; onClose: () => void }) 
     case 'customBuildItem':        return <CustomBuildItemWindow />;
     case 'feedback':               return <FeedbackWindow />;
     case 'gameMenu':               return <GameMenuWindow />;
+    case 'dailyOperationsSettings': return <OpeningChecklistSettings />;
     default:                       return <div className="p-8 text-zinc-400">Unknown modal: {type}</div>;
   }
 }
@@ -559,6 +562,41 @@ const App: React.FC = () => {
 
 export default App;
 
+function ScheduledDailyOperationsGate() {
+  const [due, setDue] = useState<'opening' | 'closing' | null>(null);
+  const refreshDueChecklist = useCallback(async () => {
+    const api: any = (window as any).api;
+    const settingsRows = await api?.dbGet?.('settings').catch?.(() => []) || [];
+    const record = settingsRows[0] || null;
+    const current = new Date();
+    const today = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+    const raw = record?.dailyOperationsSettings || {};
+    const settings = {
+      openingTime: /^\d{2}:\d{2}$/.test(String(raw.openingTime || '')) ? raw.openingTime : '10:00',
+      closingTime: /^\d{2}:\d{2}$/.test(String(raw.closingTime || '')) ? raw.closingTime : '18:50',
+      openingItems: Array.isArray(raw.openingItems) && raw.openingItems.length ? raw.openingItems : undefined,
+      closingItems: Array.isArray(raw.closingItems) && raw.closingItems.length ? raw.closingItems : undefined,
+      trackingStartedOn: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.trackingStartedOn || '')) ? raw.trackingStartedOn : today,
+    };
+    if (!record?.dailyOperationsSettings) {
+      const now = new Date().toISOString();
+      const updated = { ...(record || {}), dailyOperationsSettings: settings, updatedAt: now };
+      if (record?.id != null) await api?.dbUpdate?.('settings', record.id, updated);
+      else await api?.dbAdd?.('settings', { ...updated, createdAt: now });
+    }
+    const submitted = Array.isArray(record?.dailyOperationsChecklists) ? record.dailyOperationsChecklists : [];
+    const complete = (period: 'opening' | 'closing') => submitted.some((row: any) => row?.dateKey === today && row?.period === period);
+    const minutes = current.getHours() * 60 + current.getMinutes();
+    const toMinutes = (value: string) => { const [hours, mins] = value.split(':').map(Number); return (hours || 0) * 60 + (mins || 0); };
+    // Opening is first if both are overdue, then closing appears after it is submitted.
+    if (minutes >= toMinutes(settings.openingTime) && !complete('opening')) { setDue('opening'); return; }
+    if (minutes >= toMinutes(settings.closingTime) && !complete('closing')) { setDue('closing'); return; }
+    setDue(null);
+  }, []);
+  useEffect(() => { void refreshDueChecklist(); const timer = window.setInterval(() => void refreshDueChecklist(), 30_000); return () => window.clearInterval(timer); }, [refreshDueChecklist]);
+  return due ? <DailyOperationsWindow period={due} required onSubmitted={() => void refreshDueChecklist()} /> : null;
+}
+
 const AppInner: React.FC<{
   showCustomerSearch: boolean;
   setShowCustomerSearch: (v: boolean) => void;
@@ -847,6 +885,7 @@ const AppInner: React.FC<{
                     <button type="button" onClick={() => openDrawerAdmin('repairCategories')}>Repairs</button>
                     <button type="button" onClick={() => openDrawerAdmin('inventory')}>Inventory</button>
                     <button type="button" onClick={() => openDrawerAdmin('reporting')}>Reporting</button>
+                    <button type="button" onClick={() => openDrawerModal('dailyOperationsSettings')}>Opening / Closing Checklist</button>
                     <button type="button" onClick={() => openDrawerAdmin('dataTools')}>Data Tools</button>
                     <button type="button" onClick={() => openDrawerAdmin('devMenu')}>Dev Menu</button>
                   </div>
@@ -999,6 +1038,7 @@ const AppInner: React.FC<{
       ))}
       <GidgetChat open={gidgetOpen} onClose={() => setGidgetOpen(false)} />
       <PlatformPermissionHandshake />
+      <ScheduledDailyOperationsGate />
     </div>
   );
 };
