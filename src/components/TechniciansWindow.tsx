@@ -4,6 +4,7 @@ import { listTechnicians, addTechnician, removeTechnician, updateTechnician } fr
 import { formatPhone } from '../lib/format';
 import TechnicianAnalyticsWindow from './TechnicianAnalyticsWindow';
 import { DEFAULT_TECHNICIAN_ICON_ID, TechnicianAvatar, TechnicianIconPicker } from '../lib/technicianIcons';
+import { supabase } from '../lib/supabase';
 
 const TechnicianForm: React.FC<{ onClose: () => void; onSaved: (t: any) => void }> = ({ onClose, onSaved }) => {
   const [local, setLocal] = useState<any>({ firstName: '', lastName: '', nickname: '', phone: '', email: '', passcode: '', profileIcon: DEFAULT_TECHNICIAN_ICON_ID });
@@ -157,6 +158,22 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
       console.error('delete tech failed', error);
       alert('Delete failed. See console for details.');
     }
+  }
+
+  async function setUpLogin(tech: any) {
+    const staffProfileId = String(tech?.cloudId || '').trim();
+    if (!staffProfileId) {
+      setTechnicianMessage(tech.id, 'Sync this technician first, then try again.');
+      return;
+    }
+    if (!String(tech?.email || '').trim()) {
+      setTechnicianMessage(tech.id, 'Add an email address before setting up a login.');
+      return;
+    }
+    const confirmed = window.confirm(`Send ${tech.email} a secure GadgetBoy POS login setup link?`);
+    if (!confirmed) return;
+    const { data, error } = await supabase.functions.invoke('staff-account-admin', { body: { action: 'setup', staffProfileId } });
+    setTechnicianMessage(tech.id, error ? (error.message || 'Login setup could not be sent.') : String(data?.message || 'Login setup link sent.'));
   }
 
   useEffect(() => { 
@@ -338,6 +355,7 @@ const TechniciansWindow: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
                   </div>
 
                   <div className="gb-tech-actions">
+                    <button type="button" onClick={() => void setUpLogin(tech)}>Set Up Login</button>
                     <button type="button" onClick={() => setPasscodeTech(tech)}>Passcode</button>
                     <button type="button" className="verify" onClick={() => setVerifyTech(tech)}>Verify Time</button>
                     <button type="button" className="analytics" onClick={() => setAnalyticsTech(tech)}>Analytics</button>

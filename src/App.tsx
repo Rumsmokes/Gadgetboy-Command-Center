@@ -19,6 +19,7 @@ import { dispatchOpenModal, registerOpenModal, unregisterOpenModal } from './lib
 import { storeWindowPayload } from './lib/windowPayload';
 import { openAdminTool, type AdminToolKey } from './lib/adminWindowNavigation';
 import { LoginScreen } from './auth/LoginScreen';
+import { AccountPasswordScreen } from './auth/AccountPasswordScreen';
 import DurantApp from './durant/DurantApp';
 import { getSupabaseRuntimeConfig, isTestEnvironment, supabase } from './lib/supabase';
 import PlatformPermissionHandshake from './components/PlatformPermissionHandshake';
@@ -65,6 +66,11 @@ const FeedbackWindow            = React.lazy(() => import('./components/Feedback
 const GameMenuWindow            = React.lazy(() => import('./components/GameMenuWindow'));
 const DailyOperationsWindow     = React.lazy(() => import('./components/DailyOperationsWindow'));
 const OpeningChecklistSettings  = React.lazy(() => import('./components/DailyOperationsWindow').then(module => ({ default: module.OpeningChecklistSettings })));
+
+function hasAccountActionToken() {
+  if (typeof window === 'undefined') return false;
+  return /(?:[?#&])(type=)?(?:recovery|invite)(?:[&#]|$)/i.test(`${window.location.search}&${window.location.hash}`);
+}
 
 // ── map api method names → modal type ─────────────────────────────────────
 const API_TO_MODAL: Record<string, string> = {
@@ -313,6 +319,7 @@ const App: React.FC = () => {
   const [cloudReady, setCloudReady] = useState(testEnvironment);
   const [cloudWarning, setCloudWarning] = useState('');
   const [accessError, setAccessError] = useState('');
+  const [accountAction, setAccountAction] = useState(hasAccountActionToken);
   const currentAuthUserIdRef = useRef<string | null>(null);
 
   const loadStaffProfile = useCallback(async (nextSession: Session | null) => {
@@ -376,7 +383,8 @@ const App: React.FC = () => {
       void loadStaffProfile(data.session);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'PASSWORD_RECOVERY' || hasAccountActionToken()) setAccountAction(true);
       void loadStaffProfile(nextSession);
     });
 
@@ -498,6 +506,13 @@ const App: React.FC = () => {
         ) : null}
       </>
     );
+  }
+
+  if (accountAction) {
+    return <AccountPasswordScreen onComplete={() => {
+      setAccountAction(false);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }} />;
   }
 
   if (staffProfile.role === 'durant') {

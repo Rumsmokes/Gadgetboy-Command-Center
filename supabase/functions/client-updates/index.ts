@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.110.1";
+import { requireActiveStaff, StaffAuthError } from "../_shared/staff-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -210,25 +211,12 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const publishableKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const authorization = req.headers.get("Authorization") || "";
     if (!supabaseUrl || !publishableKey || !serviceRoleKey) throw httpError(503, "Supabase client updates are not configured.");
+    const authorization = req.headers.get("Authorization") || "";
     if (!authorization) throw httpError(401, "Sign in before sending a client update.");
-
-    const userClient = createClient(supabaseUrl, publishableKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-      global: { headers: { Authorization: authorization } },
-    });
-    const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData.user) throw httpError(401, "Your login session is no longer valid.");
-
+    const staff = await requireActiveStaff(req);
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: profile, error: profileError } = await admin
-      .from("staff_profiles")
-      .select("shop_id,status")
-      .eq("user_id", userData.user.id)
-      .eq("status", "active")
-      .maybeSingle();
-    if (profileError || !profile?.shop_id) throw httpError(403, "This account is not active for a POS shop.");
+    const profile = { shop_id: staff.shopId };
 
     const body = await req.json() as JsonRecord;
     let type = normalizeType(body.recordType);
@@ -336,10 +324,10 @@ Deno.serve(async (req: Request) => {
           promisedAt,
           scheduledPickupAt,
           itemIndexes: Array.isArray(body.itemIndexes) ? body.itemIndexes : [],
-          actor: safeString(userData.user.user_metadata?.display_name || userData.user.email || 'Technician', 200),
+          actor: safeString(staff.email || 'Technician', 200),
         },
         p_idempotency_key: idempotencyKey,
-        p_actor_user_id: userData.user.id,
+        p_actor_user_id: staff.userId,
       });
       if (workflowError || !workflow?.workOrder) throw httpError(500, safeString(workflowError?.message || 'The ticket workflow could not be updated.'));
       savedRecord = workflow.workOrder as JsonRecord;
@@ -386,7 +374,7 @@ Deno.serve(async (req: Request) => {
       delivery_attempts: 0,
       next_attempt_at: deliveryMode === "email" ? new Date().toISOString() : null,
       delivery_updated_at: new Date().toISOString(),
-      created_by: userData.user.id,
+      created_by: staff.userId,
       technician_id: (body as any).__technician?.legacy_technician_id || null,
       technician_name: (body as any).__technician?.legacy_technician_id ? `Technician #${(body as any).__technician.legacy_technician_id}` : null,
     };
@@ -453,6 +441,7 @@ Deno.serve(async (req: Request) => {
       history,
     });
   } catch (error) {
+    if (error instanceof StaffAuthError) return json(error.status, { ok: false, error: error.message });
     const status = Number((error as Error & { status?: number })?.status || 500) || 500;
     const message = error instanceof Error ? error.message : String(error || "Client update failed.");
     console.error("client-updates failed", message);

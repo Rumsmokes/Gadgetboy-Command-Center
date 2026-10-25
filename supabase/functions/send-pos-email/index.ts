@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.110.1";
 import nodemailer from "npm:nodemailer@7.0.12";
+import { requireActiveStaff, StaffAuthError } from "../_shared/staff-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -97,22 +98,13 @@ async function authorizeStaff(req: Request, shopId: string) {
     return { ok: true as const, userId: null, service: true as const };
   }
 
-  const client = createClient(supabaseUrl, publishableKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: authorization } },
-  });
-  const { data: authData, error: authError } = await client.auth.getUser();
-  if (authError || !authData.user) return { ok: false as const, status: 401, error: "Your login session is no longer valid." };
-
-  const { data: profile, error: profileError } = await client
-    .from("staff_profiles")
-    .select("id,shop_id,status")
-    .eq("user_id", authData.user.id)
-    .eq("shop_id", shopId)
-    .eq("status", "active")
-    .maybeSingle();
-  if (profileError || !profile) return { ok: false as const, status: 403, error: "This account is not active for the selected shop." };
-  return { ok: true as const, userId: authData.user.id, service: false as const };
+  try {
+    const staff = await requireActiveStaff(req, { shopId });
+    return { ok: true as const, userId: staff.userId, service: false as const };
+  } catch (error) {
+    if (error instanceof StaffAuthError) return { ok: false as const, status: error.status, error: error.message };
+    return { ok: false as const, status: 500, error: "Unable to authorize this POS email action." };
+  }
 }
 
 function emailConfig() {

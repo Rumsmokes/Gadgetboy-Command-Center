@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.110.1";
+import { requireActiveStaff, StaffAuthError } from "../_shared/staff-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,16 +56,7 @@ Deno.serve(async (req: Request) => {
     if (!supabaseUrl || !anonKey || !serviceRoleKey) return json(503, { ok: false, error: "The QR status service is not configured." });
     const publicClientView = url.searchParams.get("view") === "client";
     const publicCalendarDownload = url.searchParams.get("format") === "ics";
-    if (!publicClientView && !publicCalendarDownload) {
-      const authorization = req.headers.get("Authorization") || "";
-      if (!authorization) return json(401, { ok: false, error: "Sign in before opening this staff QR workflow." });
-      const userClient = createClient(supabaseUrl, anonKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
-        global: { headers: { Authorization: authorization } },
-      });
-      const { data: userData, error: userError } = await userClient.auth.getUser();
-      if (userError || !userData.user) return json(401, { ok: false, error: "Sign in before opening this staff QR workflow." });
-    }
+    const staff = !publicClientView && !publicCalendarDownload ? await requireActiveStaff(req) : null;
     const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
     const { data: tokenRow, error: tokenError } = await admin
@@ -75,12 +67,18 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (tokenError || !tokenRow) return json(404, { ok: false, error: "This QR status link is no longer active." });
     if (tokenRow.expires_at && new Date(tokenRow.expires_at).getTime() < Date.now()) return json(410, { ok: false, error: "This QR status link has expired." });
+    if (staff && String(staff.shopId) !== String(tokenRow.shop_id)) return json(403, { ok: false, error: "This QR link belongs to a different shop." });
 
     const type = safe(tokenRow.record_type, 20) || "repair";
     const table = type === "repair" ? "work_orders" : type === "consult" ? "calendar_events" : "sales";
+    const recordFields = type === "repair"
+      ? "id,shop_id,legacy_id,product_description,product_category,model,status_update,repair_status,status,estimated_date,scheduled_pickup_at"
+      : type === "consult"
+        ? "id,shop_id,legacy_id,title,category,status,status_update,event_date,event_time,end_time,location,technician"
+        : "id,shop_id,legacy_id,item_description,category,status,status_update,estimated_date";
     const { data: record, error: recordError } = await admin
       .from(table)
-      .select("*")
+      .select(recordFields)
       .eq("shop_id", tokenRow.shop_id)
       .eq("legacy_id", tokenRow.legacy_record_id)
       .maybeSingle();
@@ -96,7 +94,7 @@ Deno.serve(async (req: Request) => {
         `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`,
         `DTSTART:${start}`, `DTEND:${end}`, `SUMMARY:${icsEscape(record.title || "GadgetBoy Consultation")}`,
         `LOCATION:${icsEscape(record.location || "At Shop Location")}`,
-        `DESCRIPTION:${icsEscape(record.notes || "Scheduled consultation with GadgetBoy Repair & Retail.")}`,
+        `DESCRIPTION:${icsEscape("Scheduled consultation with GadgetBoy Repair & Retail.")}`,
         "BEGIN:VALARM", "TRIGGER:-PT1H", "ACTION:DISPLAY", "DESCRIPTION:Consultation begins in one hour", "END:VALARM",
         "END:VEVENT", "END:VCALENDAR", "",
       ].join("\r\n");
@@ -131,6 +129,7 @@ Deno.serve(async (req: Request) => {
       icsUrl: type === "consult" ? `${url.origin}${url.pathname}?token=${encodeURIComponent(token)}&format=ics` : null,
     });
   } catch (error) {
+    if (error instanceof StaffAuthError) return json(error.status, { ok: false, error: error.message });
     const message = error instanceof Error ? error.message : String(error || "QR status lookup failed.");
     console.error("qr-status failed", message);
     return json(500, { ok: false, error: message.slice(0, 1000) });
