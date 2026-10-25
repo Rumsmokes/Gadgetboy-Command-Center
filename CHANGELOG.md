@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.38 (2026-10-25)
+
+- Restricts staff QR actions, client updates, and POS email delivery to authenticated accounts tied to an active GadgetBoy staff profile for the same shop.
+- Adds a server-side shop ownership check to staff QR links and minimizes the record fields available to public client status pages and consultation calendar downloads.
+- Adds Admin → Technicians **Set Up Login**, which sends a secure Supabase invite or password-reset link only when an admin chooses it; no technician accounts were created by this release.
+- Adds an email-only **Forgot ya Login?** recovery path and a secure in-app password setup screen. The existing four-digit technician PIN remains separate from account passwords.
+
 ## v0.1.37 (2026-10-19)
 
 - Corrects QR-approved storage fees: the approval starts with exactly $25, then the server adds one further $25 charge only after each completed day.
