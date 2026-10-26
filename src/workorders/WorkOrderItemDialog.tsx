@@ -45,7 +45,12 @@ export default function WorkOrderItemDialog({ item, onClose, onSave }: {
   async function autofillOrderDetails(value: string) {
     const orderSourceUrl = normalizePartOrderUrl(value);
     if (!orderSourceUrl) return;
-    update({ orderSourceUrl, requiresOrder: true, orderStatus: 'needed' });
+    // Pasting a supplier listing is an intentional switch to supplier
+    // fulfillment. Persist that source alongside the URL so cart logic never
+    // has to infer procurement from a URL alone.
+    setSource('order');
+    setAddToCart(true);
+    update({ orderSourceUrl, partSourceKind: 'order', requiresOrder: true, orderStatus: 'needed' });
     setScrapingOrderUrl(true);
     setError('');
     try {
@@ -55,7 +60,7 @@ export default function WorkOrderItemDialog({ item, onClose, onSave }: {
         const markupPct = current.markupPct ?? DEFAULT_PART_MARKUP_PCT;
         const suggestedParts = markedUpPartPrice(internalCost, markupPct);
         const distributor = current.distributor || meta.vendor || derivePartVendorFromUrl(orderSourceUrl);
-        return { ...current, repair: supplierTitleForItem(current.repair, meta.title), orderSourceUrl, distributor, partSource: current.partSource || distributor, internalCost, markupPct, parts: suggestedParts ?? current.parts, requiresOrder: true, orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed' };
+        return { ...current, repair: supplierTitleForItem(current.repair, meta.title), orderSourceUrl, distributor, partSource: current.partSource || distributor, partSourceKind: 'order', internalCost, markupPct, parts: suggestedParts ?? current.parts, requiresOrder: true, orderStatus: current.orderStatus === 'ordered' || current.orderStatus === 'received' ? current.orderStatus : 'needed' };
       });
       if (!meta.ok && meta.error) setError(`URL saved, but supplier details could not be read: ${meta.error}`);
     } catch (fetchError: any) {

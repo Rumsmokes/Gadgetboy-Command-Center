@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.39 (2026-10-26)
+
+- Adds **EOD / Checkout Cart** directly to the Command Center, including the mobile Command Center.
+- Makes repair procurement explicit: an order URL is now reference data only and cannot create an EOD cart task by itself.
+- Keeps in-stock repairs, including HDMI repairs, out of EOD while preserving exact device-compatible inventory consumption (for example, PS5 HDMI versus Xbox HDMI).
+- Prevents supplier-sourced repair lines from consuming shop inventory before they are received, while preserving manual Inventory MOQ reorders in EOD.
+
 ## v0.1.38 (2026-10-25)
 
 - Restricts staff QR actions, client updates, and POS email delivery to authenticated accounts tied to an active GadgetBoy staff profile for the same shop.

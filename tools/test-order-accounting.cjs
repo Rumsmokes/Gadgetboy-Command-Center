@@ -38,6 +38,8 @@ assert.match(workOrderItemsSource, />\s*Cancel\s*<\/button>[\s\S]*onCommit\?\.\(
 assert.match(saleItemsSource, />\s*Cancel\s*<\/button>[\s\S]*onCommit\?\.\(nextItems\);[\s\S]*setEditing\(null\);/, 'Sale item Save must close the editor and Cancel must remain at the bottom.');
 assert.match(workOrderItemsSource, /onCommit\?\.\(nextItems\)/, 'Work-order item edits must commit immediately so EOD reads the saved cost.');
 assert.match(saleItemsSource, /onCommit\?\.\(nextItems\)/, 'Sale item edits must commit immediately so EOD reads the saved cost.');
+const workOrderItemDialogSource = readSource('src/workorders/WorkOrderItemDialog.tsx');
+assert.match(workOrderItemDialogSource, /partSourceKind:\s*'order'/, 'Entering an order URL for a work-order repair must persist the explicit supplier-order source.');
 assert.match(eodSource, /Items arrive on different dates/, 'The EOD cart must support split delivery dates.');
 assert.match(eodSource, /estimatedDelivery: deliveryForRow\(cartRow\)/, 'Checked-out cart lines must retain their selected estimated delivery date.');
 assert.match(eodSource, /Send client update/, 'EOD checkout must offer an explicit client update choice.');
@@ -271,5 +273,49 @@ const staleInStockOrderedSale = collectOrderCartRows([], [{
 }], []);
 assert.equal(staleInStockOrderedSale.length, 1, 'A sale line marked for supplier order must remain in the EOD cart even when a stale in_stock status was retained.');
 assert.equal(staleInStockOrderedSale[0].key, 'sale:1513:iphone-se');
+
+const referencedInventoryHdmi = collectOrderCartRows([{
+  id: 1801,
+  customerName: 'PS5 HDMI inventory repair',
+  items: [{
+    id: 'ps5-hdmi',
+    repair: 'PS5 HDMI Port',
+    internalCost: 8,
+    orderSourceUrl: 'https://supplier.example/ps5-hdmi',
+    partSourceKind: 'inventory',
+    inventoryProductId: 44,
+    requiresOrder: false,
+    orderStatus: 'in_stock',
+  }],
+}], [], []);
+assert.equal(referencedInventoryHdmi.length, 0, 'An in-stock repair part with a supplier reference URL must never enter the EOD cart.');
+
+const urlOnlyLegacyRepair = collectOrderCartRows([{
+  id: 1802,
+  customerName: 'Legacy HDMI repair',
+  items: [{
+    id: 'legacy-hdmi',
+    repair: 'HDMI Port',
+    internalCost: 8,
+    orderSourceUrl: 'https://supplier.example/hdmi',
+    partSourceKind: 'inventory',
+  }],
+}], [], []);
+assert.equal(urlOnlyLegacyRepair.length, 0, 'A supplier URL alone is reference data, not an instruction to purchase a repair part.');
+
+const explicitOrderedRepair = collectOrderCartRows([{
+  id: 1803,
+  customerName: 'Order-required HDMI repair',
+  items: [{
+    id: 'ordered-hdmi',
+    repair: 'PS5 HDMI Port',
+    internalCost: 8,
+    orderSourceUrl: 'https://supplier.example/ps5-hdmi',
+    partSourceKind: 'order',
+    requiresOrder: true,
+    orderStatus: 'needed',
+  }],
+}], [], []);
+assert.equal(explicitOrderedRepair.length, 1, 'A deliberately supplier-ordered repair part must enter the EOD cart.');
 
 console.log('Order accounting and EOD cart checks passed.');

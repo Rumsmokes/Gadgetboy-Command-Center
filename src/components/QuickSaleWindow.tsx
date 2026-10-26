@@ -105,19 +105,25 @@ const QuickSaleWindow: React.FC = () => {
 
   function addRepair(repair: any) {
     const description = String(repair?.title || repair?.altDescription || 'Repair').trim();
+    const trackedOutOfStock = repair?.trackStock === true && Number(repair?.stockCount || 0) <= 0;
     const row: SaleItemRow = {
       id: newLineId(),
       description,
       qty: 1,
       price: repairPrice(repair),
       internalCost: Number(repair?.internalCost ?? repair?.partCost) || 0,
-      inStock: repair?.trackStock ? Number(repair?.stockCount) > 0 : !repair?.orderSourceUrl,
+      // A catalog/reorder URL is reference information. Quick Checkout cannot
+      // silently turn a repair into a supplier order just because that URL is
+      // present; an order is created deliberately from a ticket line instead.
+      inStock: !trackedOutOfStock,
       productUrl: String(repair?.orderSourceUrl || '').trim(),
       category: 'Repair',
       distributor: String(repair?.partSource || '').trim(),
       trackStock: repair?.trackStock === true,
       inventoryProductId: repair?.inventoryProductId,
-      ...(repair?.orderSourceUrl ? { requiresOrder: true, orderStatus: 'needed' } : {}),
+      sourceKind: trackedOutOfStock ? 'order' : 'local',
+      requiresOrder: trackedOutOfStock,
+      orderStatus: trackedOutOfStock ? 'needed' : 'in_stock',
     } as SaleItemRow;
     setRepairLines((current) => [...current, row].slice(0, 20));
   }

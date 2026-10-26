@@ -27,6 +27,7 @@ async function main() {
   assert.match(quickSaleSource, /consumeInStockInventory\(api, 'sale'/, 'Quick Checkout must deduct linked inventory after creating its paid sale.');
   assert.match(regularSaleSource, /consumeInStockInventory\(/, 'Regular sale checkout must deduct linked inventory.');
   assert.match(workOrderSource, /consumeInStockInventory\(api, 'workOrder'/, 'Closed work-order checkout must deduct linked inventory.');
+  assert.doesNotMatch(quickSaleSource, /repair\?\.orderSourceUrl \? \{ requiresOrder: true/, 'A saved catalog URL must not automatically turn a quick repair into an EOD purchase.');
 
   let products = [{ id: 7, itemDescription: 'Test Part', trackStock: true, stockCount: 5, inventoryConsumptionKeys: [] }];
   const api = {
@@ -45,6 +46,12 @@ async function main() {
   assert.equal(retry.applied, 0);
   assert.equal(retry.skipped, 1);
   assert.equal(products[0].stockCount, 3, 'Retry must not consume the same work-order line twice.');
+
+  const orderedPartNotReceived = await consumeInStockInventory(api, 'workOrder', 102, [{
+    id: 'supplier-line', inventoryProductId: 7, qty: 1, requiresOrder: false, partSourceKind: 'order', orderStatus: 'needed',
+  }]);
+  assert.equal(orderedPartNotReceived.applied, 0, 'A supplier-sourced line must not consume shop inventory before delivery, even if it is not in the EOD cart.');
+  assert.equal(products[0].stockCount, 3, 'Supplier-sourced repair lines cannot decrement an in-stock part.');
 
   await assert.rejects(
     () => consumeInStockInventory(api, 'sale', 202, [{ id: 'line-2', inventoryProductId: 7, qty: 4, requiresOrder: false }]),

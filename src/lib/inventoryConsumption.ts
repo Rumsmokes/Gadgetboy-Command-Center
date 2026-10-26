@@ -46,6 +46,11 @@ function units(item: any) {
   return Number.isFinite(value) && value > 0 ? Math.max(1, Math.round(value)) : 1;
 }
 
+function isSupplierSourced(item: any): boolean {
+  const source = String(item?.partSourceKind || item?.sourceKind || '').trim().toLowerCase();
+  return item?.requiresOrder === true || source === 'order' || source === 'supplier';
+}
+
 function itemConsumptionKey(sourceType: 'sale' | 'workOrder', sourceId: number | string, item: any, index: number) {
   const lineId = String(item?.id || '').trim() || `line-${index}`;
   return `${sourceType}:${sourceId}:${lineId}`;
@@ -97,7 +102,10 @@ async function consumeWithProducts(
       ? findInventoryPartForRepair(products, item, options.repairContext)
       : null;
     const inventoryId = Number(resolveConsumedInventoryId(item, products) || (matchedPart && !isInventoryParent(matchedPart) ? matchedPart.id : 0));
-    if (!(inventoryId > 0) || item?.requiresOrder === true) continue;
+    // Supplier-sourced lines are not installed inventory. A line must be
+    // explicitly marked as shop inventory (or resolve to a linked stock part)
+    // before it can reduce an on-hand variant.
+    if (!(inventoryId > 0) || isSupplierSourced(item)) continue;
     const productIndex = products.findIndex((row: any) => Number(row?.id) === inventoryId);
     const product = productIndex >= 0 ? products[productIndex] : null;
     if (!product || product.trackStock !== true) {

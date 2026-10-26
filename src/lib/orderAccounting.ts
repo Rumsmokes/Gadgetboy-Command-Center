@@ -165,25 +165,36 @@ function salePayment(record: any): { status: OrderCartPaymentStatus; detail: str
   return { status: 'unverified', detail: 'Sale is partially paid; payment is not allocated by product.' };
 }
 
+export type ProcurementSource = 'order' | 'inventory' | 'client' | 'salvaged' | 'none';
+
+/**
+ * A URL is catalog/reference information. Only an explicit order selection
+ * may create an EOD purchase task. This deliberately keeps old URLs on
+ * in-stock parts from turning every repair into a supplier purchase.
+ */
+export function procurementSourceForItem(item: any, sourceType: 'workOrder' | 'sale'): ProcurementSource {
+  const source = String(sourceType === 'workOrder' ? item?.partSourceKind : item?.sourceKind || '').trim().toLowerCase();
+  if (item?.salvagedPart === true || source === 'salvaged') return 'salvaged';
+  if (source === 'client' || source === 'client_provided') return 'client';
+  if (source === 'inventory' || source === 'stock' || source === 'in_stock' || source === 'local' || item?.inStock === true) return 'inventory';
+  if (source === 'order' || source === 'supplier' || item?.requiresOrder === true) return 'order';
+  return 'none';
+}
+
 export function isOutstandingOrderItem(item: any, record: any, sourceType: 'workOrder' | 'sale') {
   if (item?.purchaseQueueRemovedAt) return false;
-  const partSource = String(item?.partSourceKind || '').trim().toLowerCase();
-  const saleSource = String(item?.sourceKind || '').trim().toLowerCase();
+  const procurementSource = procurementSourceForItem(item, sourceType);
   const category = String(item?.category || item?.itemType || item?.type || '').trim().toLowerCase();
   if (item?.salvagedPart === true || item?.inStock === true || item?.isLabor === true || item?.labor === true || item?.isFee === true || item?.fee === true) return false;
-  if (partSource === 'client' || partSource === 'stock' || saleSource === 'local') return false;
+  // `requiresOrder` is the saved Add-to-EOD-Cart decision. A technician may
+  // record a supplier source without placing it into today's cart, but it must
+  // never become an accidental purchase task.
+  if (procurementSource !== 'order' || item?.requiresOrder !== true) return false;
   if (category.startsWith('consult') || /labor|diagnostic|additional fee|\bfee\b/.test(category)) return false;
-  const url = String(item?.orderSourceUrl || item?.productUrl || record?.partsOrderUrl || '').trim();
-  const requiresOrder = sourceType === 'workOrder'
-    ? item?.requiresOrder === true || partSource === 'order' || (!!url && item?.requiresOrder !== false)
-    : item?.requiresOrder === true || saleSource === 'order' || item?.inStock === false;
-  if (!requiresOrder) return false;
   const status = String(item?.orderStatus || (record?.partsOrderDate ? 'ordered' : 'needed')).trim().toLowerCase();
-  // A supplier-order flag is authoritative: older sales can retain `in_stock`
-  // after a technician switches them back to an ordered item. Only an actual
-  // EOD checkout or delivery status removes that line from the purchasing cart.
-  const orderedForCart = item?.requiresOrder === true || partSource === 'order' || saleSource === 'order';
-  if (status === 'in_stock' && orderedForCart) return true;
+  // An explicit supplier-order source remains authoritative even if a stale
+  // display status was retained. EOD checkout/delivery is what removes it.
+  if (status === 'in_stock') return true;
   return !['ordered', 'received', 'delivered', 'in_stock'].includes(status);
 }
 
