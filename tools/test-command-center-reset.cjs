@@ -14,6 +14,7 @@ const preReset = {
   productDescription: 'PS5 Slim',
   checkInAt: '2026-11-10T09:00:00.000Z',
   activityAt: '2026-11-10T09:00:00.000Z',
+  payments: [{ id: 'diagnostic-25', at: '2026-11-11T14:30:00.000Z', amount: 25, paymentType: 'Diagnostic fee' }],
   items: [],
 };
 
@@ -27,6 +28,8 @@ const cleared = buildCommandCenterModel({
 assert.equal(cleared.records.length, 0, 'A reset must hide pre-reset tickets from Command Center records.');
 assert.equal(cleared.activeWorkOrders.length, 0, 'A reset must hide pre-reset tickets from Active Work Orders.');
 assert.equal(cleared.needsAttention.length, 0, 'A reset must hide pre-reset audit entries from Needs Attention.');
+assert.equal(cleared.collectedToday, 25, 'A reset must never remove today\'s payment total.');
+assert.equal(cleared.paymentsToday, 1, 'A reset must retain today\'s payment-event count.');
 assert.equal(preReset.status, 'open', 'Reset filtering must not mutate source ticket status.');
 assert.equal(preReset.workflowStage, 'Checked in', 'Reset filtering must not reroute or close the source ticket.');
 
@@ -61,6 +64,8 @@ const toolbarSource = fs.readFileSync(path.resolve(__dirname, '..', 'src/compone
 const appSource = fs.readFileSync(path.resolve(__dirname, '..', 'src/App.tsx'), 'utf8');
 assert.match(commandCenterSource, /Reset Command Center/, 'Command Center must expose a Reset Command Center action.');
 assert.match(commandCenterSource, /commandCenterResetAt/, 'Command Center must persist and reload the shared reset timestamp.');
+assert.match(commandCenterSource, /dbUpdate\?\.\('settings', data\.settingsRecord\.id, settings\)/, 'Reset must persist only the routing baseline in settings.');
+assert.doesNotMatch(commandCenterSource.slice(commandCenterSource.indexOf('const resetCommandCenter'), commandCenterSource.indexOf('const markProductsDelivered')), /dbUpdate\?\.\('(workOrders|sales|customers|payments)'/, 'Reset must never edit saved POS records.');
 assert.match(commandCenterSource, /onSettingsChanged/, 'A shared reset must refresh other open Command Centers.');
 assert.match(appSource, /\['settings', 'settings'\]/, 'Supabase realtime must relay shared settings changes to open desktop installs.');
 assert.match(toolbarSource, /\bCart\b/, 'Top toolbar must expose a distinct Cart action beside EOD.');

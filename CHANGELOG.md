@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.41 (2026-11-12)
+
+- Corrects **Reset Command Center** so it clears only the front-page ticket-routing snapshot and Needs Attention lanes.
+- Preserves Collected Today, payment transaction history, client replies, all saved ticket statuses, invoices, clients, payments, update history, and reporting.
+- Existing tickets re-enter Command Center only after a new technician routing/status update, as intended.
+
 ## v0.1.40 (2026-11-12)
 
 - Adds secure Firebase Cloud Messaging enrollment for authenticated Android POS devices. Opening the updated app while logged in registers that device without exposing Firebase credentials to the client.

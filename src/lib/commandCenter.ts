@@ -41,6 +41,8 @@ export interface CommandCenterRecord {
 
 export interface CommandCenterModel {
   records: CommandCenterRecord[];
+  /** Financial history is retained when the front-page routing view is reset. */
+  paymentRecords: CommandCenterRecord[];
   workOrders: CommandCenterRecord[];
   sales: CommandCenterRecord[];
   activeWorkOrders: CommandCenterRecord[];
@@ -277,8 +279,10 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     if (record.stage === 'Waiting Device' || record.stage === 'Testing' || record.stage === 'Pickup' || record.stage === 'Completed') return false;
     return record.stage !== 'Parts';
   }).sort(compareRepairQueuePriority);
-  const todayPayments = collectedTodayPayments([...routedWorkOrders, ...routedSales], now);
-  const todayTransactions = collectedTodayTransactions([...routedWorkOrders, ...routedSales], now);
+  // Reset hides operational routing only; it must never alter payment history.
+  const paymentRecords = [...workOrders, ...sales];
+  const todayPayments = collectedTodayPayments(paymentRecords, now);
+  const todayTransactions = collectedTodayTransactions(paymentRecords, now);
   const todayKey = localDayKey(now);
   const collectedToday = Math.round(todayPayments.reduce((sum, amount) => sum + amount, 0) * 100) / 100;
   const rawCloverTotal = input.cloverDailyTotals?.[todayKey];
@@ -291,7 +295,7 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const occurrences = expandRecurringEvent(event, todayKey, todayKey);
     return occurrences.length ? occurrences : [];
   });
-  return { records: [...routedWorkOrders, ...routedSales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders: routedWorkOrders, sales: routedSales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday, paymentsToday: todayPayments.length, collectedTodayTransactions: todayTransactions, cloverReconciliation, globalAttention, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: routedSales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
+  return { records: [...routedWorkOrders, ...routedSales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), paymentRecords, workOrders: routedWorkOrders, sales: routedSales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday, paymentsToday: todayPayments.length, collectedTodayTransactions: todayTransactions, cloverReconciliation, globalAttention, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: routedSales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
 }
 
 export function searchCommandCenterRecords(model: CommandCenterModel, query: string) {
