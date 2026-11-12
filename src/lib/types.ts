@@ -188,4 +188,6 @@ export interface RepairItem {
   variantAttributes?: Record<string, string>;
   repairFamily?: string;
   serviceKey?: string;
+  warrantyDays?: number;
+  warrantyExcluded?: boolean;
 }

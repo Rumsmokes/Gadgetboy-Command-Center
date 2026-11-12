@@ -576,6 +576,13 @@ export default function RepairItemForm({ selectedItem, onSave, onCancel, onDelet
               />
             </div>
             </div>
+            <div className="mt-3 rounded-lg border border-zinc-700 bg-zinc-900/70 p-3">
+              <label className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+                <input type="checkbox" checked={!formData.warrantyExcluded && Number(formData.warrantyDays || 0) > 0} onChange={event => setFormData(current => ({ ...current, warrantyExcluded: !event.target.checked, warrantyDays: event.target.checked ? Number(current.warrantyDays || 90) : 0 }))} className="h-4 w-4 accent-[#39FF14]" />
+                Add warranty
+              </label>
+              {!formData.warrantyExcluded && Number(formData.warrantyDays || 0) > 0 ? <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr]"><label className="text-sm text-zinc-300">Warranty coverage (days)<input type="number" min="1" step="1" value={Number(formData.warrantyDays || 90)} onChange={event => setFormData(current => ({ ...current, warrantyDays: Math.max(1, Number(event.target.value || 0)) }))} className="mt-1 w-full rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-white outline-none focus:border-[#39FF14]" /></label><p className="self-end text-xs text-zinc-500">Saved on the repair at completion. Existing completed repairs are never changed by later catalog edits.</p></div> : <p className="mt-2 text-xs text-zinc-500">No warranty is offered for this repair.</p>}
+            </div>
             {formData.inventoryParentId ? <p className="mt-2 text-[11px] text-fuchsia-200">This is the default charge. A selected variant with its own selling price will replace it on the work order.</p> : null}
           </section>
         </div>

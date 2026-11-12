@@ -1,0 +1,10 @@
+const assert = require('node:assert/strict');
+require('ts-node').register({ transpileOnly: true, compilerOptions: { module: 'CommonJS', moduleResolution: 'Node' } });
+const { warrantyState, renewWarranty } = require('../src/lib/warrantyLifecycle.ts');
+const coverage = { id: 'w-1', repairLabel: 'PS5 HDMI', warrantyDays: 90, startedAt: '2026-11-01T00:00:00.000Z', expiresAt: '2027-01-30T00:00:00.000Z', claimCount: 0 };
+assert.equal(warrantyState(coverage, new Date('2026-11-12T00:00:00Z')), 'active');
+assert.equal(warrantyState(coverage, new Date('2027-02-01T00:00:00Z')), 'expired');
+const renewed = renewWarranty(coverage, '2026-12-01T00:00:00Z');
+assert.equal(renewed.claimCount, 1);
+assert.equal(renewed.expiresAt, '2027-03-01T00:00:00.000Z');
+console.log('Warranty lifecycle checks passed.');

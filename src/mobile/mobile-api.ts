@@ -561,6 +561,8 @@ function fromCloudRow(key: string, row: any, extra?: any): any {
       inventoryParentId: cloudNumber(row.inventory_parent_legacy_id),
       repairFamily: row.repair_family || '',
       serviceKey: row.service_key || '',
+      warrantyDays: cloudNumber(row.warranty_days) || undefined,
+      warrantyExcluded: !!row.warranty_excluded,
       compatibleDevices: Array.isArray(row.compatible_devices) ? row.compatible_devices.map(String) : [],
       createdAt: cloudDate(row.legacy_created_at || row.created_at),
       updatedAt: cloudDate(row.legacy_updated_at || row.updated_at),
@@ -954,6 +956,8 @@ function toCloudRow(key: string, item: any): any | null {
       inventory_parent_legacy_id: toCloudIntId(item.inventoryParentId),
       repair_family: toCloudString(item.repairFamily),
       service_key: toCloudString(item.serviceKey),
+      warranty_days: Number(item.warrantyDays) > 0 ? Number(item.warrantyDays) : null,
+      warranty_excluded: toCloudBool(item.warrantyExcluded),
       compatible_devices: Array.isArray(item.compatibleDevices) ? item.compatibleDevices.map((value: any) => String(value || '').trim()).filter(Boolean) : [],
       legacy_created_at: toCloudIso(item.createdAt),
       legacy_updated_at: toCloudIso(item.updatedAt),
@@ -1664,12 +1668,14 @@ async function cloudDbUpsert(key: string, item: any, queueOnFailure = true): Pro
         ignoreDuplicates: false,
       }).select('*').maybeSingle();
     }
-    if (res.error && key === 'repairCategories' && /markup_pct|inventory_product_id|inventory_parent_legacy_id|repair_family|service_key|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'repairCategories' && /markup_pct|inventory_product_id|inventory_parent_legacy_id|repair_family|service_key|warranty_days|warranty_excluded|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.markup_pct;
       delete fallbackRow.inventory_product_id;
       delete fallbackRow.inventory_parent_legacy_id;
       delete fallbackRow.repair_family;
+      delete fallbackRow.warranty_days;
+      delete fallbackRow.warranty_excluded;
       delete fallbackRow.service_key;
       res = await supabase.from(table).upsert(fallbackRow, {
         onConflict: cloudConflictForKey(key),
@@ -1740,12 +1746,14 @@ async function cloudDbInsert(key: string, item: any): Promise<any> {
       delete fallbackRow.variant_attributes;
       res = await supabase.from(table).insert(fallbackRow).select('*').single();
     }
-    if (res.error && key === 'repairCategories' && /markup_pct|inventory_product_id|inventory_parent_legacy_id|repair_family|service_key|schema cache|column/i.test(String(res.error.message || ''))) {
+    if (res.error && key === 'repairCategories' && /markup_pct|inventory_product_id|inventory_parent_legacy_id|repair_family|service_key|warranty_days|warranty_excluded|schema cache|column/i.test(String(res.error.message || ''))) {
       const fallbackRow = { ...row };
       delete fallbackRow.markup_pct;
       delete fallbackRow.inventory_product_id;
       delete fallbackRow.inventory_parent_legacy_id;
       delete fallbackRow.repair_family;
+      delete fallbackRow.warranty_days;
+      delete fallbackRow.warranty_excluded;
       delete fallbackRow.service_key;
       res = await supabase.from(table).insert(fallbackRow).select('*').single();
     }

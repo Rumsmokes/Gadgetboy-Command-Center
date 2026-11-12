@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.42 (2026-11-12)
+
+- Adds an in-place **Add warranty** setting and warranty-day field to the Repair editor.
+- Adds protected, shop-scoped warranty policy, coverage, and claim data structures for the forthcoming warranty-service workflow.
+- Establishes tested warranty eligibility and renewal date logic without changing saved tickets, payments, reporting, or existing repair coverage.
+
 ## v0.1.41 (2026-11-12)
 
 - Corrects **Reset Command Center** so it clears only the front-page ticket-routing snapshot and Needs Attention lanes.
