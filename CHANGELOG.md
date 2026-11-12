@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.43 (2026-11-12)
+
+- Makes Command Center subscribe directly to live work-order changes so QR status updates immediately route tickets into Diagnosing, Testing, Pickup, and other matching lanes.
+
 ## v0.1.42 (2026-11-12)
 
 - Adds an in-place **Add warranty** setting and warranty-day field to the Repair editor.

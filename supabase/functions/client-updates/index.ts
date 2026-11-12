@@ -134,6 +134,17 @@ function buildPatch(type: UpdateType, statusKey: string, statusLabel: string, es
     status_updated_at: now,
     estimated_date: estimatedDate || null,
   };
+  const stageByAction: Record<string, string> = {
+    diagnosis: 'Diagnosing', waiting_device: 'Waiting Device', repair_approval: 'Approval',
+    part_ordered: 'Parts', waiting_part: 'Parts', part_delivered: 'Repair',
+    items_delivered: 'Repair', approval_received: 'Repair', testing_in_progress: 'Testing',
+    repair_complete: 'Pickup', not_possible: 'Pickup', repair_declined: 'Pickup',
+    pickup_reminder: 'Pickup', schedule_pickup: 'Pickup', picked_up: 'Completed',
+  };
+  if (type === 'repair' && stageByAction[statusKey]) {
+    patch.workflow_stage = stageByAction[statusKey];
+    patch.workflow_updated_at = now;
+  }
   if (type === "repair" && statusKey === "technician_progress") {
     return { tech_notes: notes, last_update_note: notes, last_update_at: now };
   }

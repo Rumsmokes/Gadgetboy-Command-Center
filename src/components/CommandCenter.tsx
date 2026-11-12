@@ -202,6 +202,17 @@ export default function CommandCenter(props: Props) {
     window.addEventListener('focus', refreshVisible);
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refreshVisible); void supabase.removeChannel(channel); };
   }, [loadClientResponses, reconcileCloud]);
+  useEffect(() => {
+    if (isTestEnvironment()) return;
+    const api: any = (window as any).api;
+    const channel = supabase.channel('command-center-live-work-orders')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, async () => {
+        await api?.cloudSyncCollection?.('workOrders', { bootstrapLimit: 2500 }).catch(() => null);
+        await refreshCollection('workOrders');
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [refreshCollection]);
   useEffect(()=>subscribeWorkOrderUpdates(record=>{loadGenerationRef.current += 1;const key=String(record?.id);const terminal=(String(record?.status||'').toLowerCase()==='closed'||!!record?.pickedUpAt||!!record?.clientPickupDate)&&!diagnosticCheckInClosureNeedsReview(record);if(terminal)closedWorkOrderIdsRef.current.add(key);else closedWorkOrderIdsRef.current.delete(key);setData(current=>({...current,workOrders:terminal?current.workOrders.filter(row=>String(row.id)!==key):upsertCommandCenterWorkOrder(current.workOrders,record)}));}),[]);
 
   const model = useMemo(() => buildCommandCenterModel(data), [data]);
