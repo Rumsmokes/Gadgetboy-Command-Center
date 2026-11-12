@@ -26,6 +26,7 @@ import PlatformPermissionHandshake from './components/PlatformPermissionHandshak
 import { mainRecordKind, mainRecordTypeLabel } from './lib/consultationRecord';
 import { publicAsset } from './lib/publicAsset';
 import { reconcilePaidSaleInventory, reconcilePaidWorkOrderInventory } from './lib/inventoryConsumption';
+import { registerPushToken } from './lib/notifications';
 import './styles/desktop-nav-preview.css';
 
 // ── Lazy window components (shared chunk cache with main.tsx) ─────────────
@@ -437,6 +438,11 @@ const App: React.FC = () => {
   }, [session?.access_token, staffProfile?.shop_id, testEnvironment]);
 
   useEffect(() => {
+    if (testEnvironment || !session?.user?.id || !staffProfile?.shop_id) return;
+    void registerPushToken(staffProfile.shop_id, session.user.id);
+  }, [session?.user?.id, staffProfile?.shop_id, testEnvironment]);
+
+  useEffect(() => {
     if (testEnvironment) return;
     const shopId = staffProfile?.shop_id;
     const api = (window as any).api;
@@ -465,6 +471,7 @@ const App: React.FC = () => {
       ['customers', 'customers'],
       ['work_orders', 'workOrders'],
       ['sales', 'sales'],
+      ['settings', 'settings'],
     ];
     const channel = tables.reduce((current, [table, collection]) => current.on(
       'postgres_changes',

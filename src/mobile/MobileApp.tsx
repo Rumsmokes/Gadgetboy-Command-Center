@@ -9,6 +9,7 @@ import { publicAsset } from '../lib/publicAsset';
 import { storeWindowPayload } from '../lib/windowPayload';
 import { technicianDisplayName } from '../lib/admin';
 import {
+  registerPushToken,
   syncNotificationsFromCalendar,
   syncNotificationsFromRecords,
 } from '../lib/notifications';
@@ -715,6 +716,11 @@ const MobileAppRuntime: React.FC = () => {
       console.error('Mobile startup inventory reconciliation failed', error);
     });
   }, [cloudReady, previewWindow, staffProfile?.shop_id]);
+
+  useEffect(() => {
+    if (previewWindow || !session?.user?.id || !staffProfile?.shop_id) return;
+    void registerPushToken(staffProfile.shop_id, session.user.id);
+  }, [previewWindow, session?.user?.id, staffProfile?.shop_id]);
 
   if (previewWindow) {
     removeInitialHtmlLoader();

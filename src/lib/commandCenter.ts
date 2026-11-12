@@ -62,7 +62,7 @@ export interface CommandCenterModel {
 
 export type CollectedTodayTransaction = { id:string; recordedAt:string; invoiceLabel:string; recordKind:CommandCenterKind; recordId:string|number; clientLabel:string; summary:string; paymentType:string; paymentMethod:string; amount:number };
 
-type CommandCenterInput = { customers?: any[]; technicians?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; calendarNotes?: any[]; purchaseOrders?: any[]; attentionSettings?: any; cloverDailyTotals?: Record<string, unknown>; now?: Date };
+type CommandCenterInput = { customers?: any[]; technicians?: any[]; workOrders?: any[]; sales?: any[]; calendarEvents?: any[]; calendarNotes?: any[]; purchaseOrders?: any[]; attentionSettings?: any; cloverDailyTotals?: Record<string, unknown>; commandCenterResetAt?: string | null; now?: Date };
 
 const text = (value: any) => String(value ?? '').trim();
 const number = (value: any) => Number(value || 0) || 0;
@@ -248,14 +248,18 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     const activityAt = text(record?.activityAt || record?.checkoutDate || record?.checkInAt || record?.createdAt);
     return { id: record?.id, kind, customerId: record?.customerId, customerName, title, deviceLabel: title, deviceCategory: '', problem: '', model: '', serial: '', expedited: false, quickTurnaround: false, stagnant: false, partsReady: false, attentionReasons: [], status: text(record?.status), technician: resolveTechnician(record?.assignedTo, technicians).name, total, remaining, activityAt, searchText: `${record?.id} ${customerName} ${title} ${record?.phone || ''} ${record?.email || ''}`.toLowerCase(), source: record };
   });
-  workOrders.forEach(record => {
+  const resetAt = timestamp(input.commandCenterResetAt);
+  const wasActiveAfterReset = (record: CommandCenterRecord) => !resetAt || timestamp(record.activityAt) > resetAt;
+  const routedWorkOrders = workOrders.filter(wasActiveAfterReset);
+  const routedSales = sales.filter(wasActiveAfterReset);
+  routedWorkOrders.forEach(record => {
     record.attentionReasons.push(...sharedRecordAttention(record, customers));
     record.attentionReasons.push(...purchaseAuditReasons(record.source, record.kind, now));
     const items = Array.isArray(record.source?.items) ? record.source.items : [];
     if (!isFinishedWorkOrder(record.source) && !items.length && workOrderAgeDays(record.source, now) >= Number(input.attentionSettings?.notStartedAttentionDays ?? 2)) record.attentionReasons.push({ code: 'missing-line-items', label: 'Work order still has no repair or diagnostic line items' });
     if (record.deviceLabel === 'Device not entered') record.attentionReasons.push({ code: 'missing-device', label: 'Device information is missing' });
   });
-  sales.forEach(record => {
+  routedSales.forEach(record => {
     record.productDelivery = productDeliveryFor(record.source);
     record.attentionReasons.push(...sharedRecordAttention(record, customers));
     record.attentionReasons.push(...purchaseAuditReasons(record.source, record.kind, now));
@@ -263,31 +267,31 @@ export function buildCommandCenterModel(input: CommandCenterInput): CommandCente
     if (record.kind === 'consultation' && !text(record.source?.appointmentDate || record.source?.appointment_date || record.source?.eventDate || record.source?.event_date)) record.attentionReasons.push({ code: 'consultation-unscheduled', label: 'Consultation has no scheduled date' });
   });
   const stages: Record<string, CommandCenterRecord[]> = Object.fromEntries(['Checked in', 'Diagnosing', 'Approval', 'Parts', 'Repair', 'Testing', 'Pickup', 'Completed', 'Waiting Device'].map(stage => [stage, []]));
-  workOrders.forEach(record => stages[record.stage || 'Checked in']?.push(record));
-  const activeWorkOrders = workOrders.filter(record => record.stage !== 'Completed' && record.stage !== 'Pickup');
+  routedWorkOrders.forEach(record => stages[record.stage || 'Checked in']?.push(record));
+  const activeWorkOrders = routedWorkOrders.filter(record => record.stage !== 'Completed' && record.stage !== 'Pickup');
   const awaitingParts = stages.Parts;
   const readyForPickup = stages.Pickup;
-  const needsAttention = [...workOrders, ...sales].filter(record => record.attentionReasons.length > 0);
-  const productDeliveries = sales.filter(record => record.kind === 'sale' && Number(record.productDelivery?.itemCount || 0) > 0);
+  const needsAttention = [...routedWorkOrders, ...routedSales].filter(record => record.attentionReasons.length > 0);
+  const productDeliveries = routedSales.filter(record => record.kind === 'sale' && Number(record.productDelivery?.itemCount || 0) > 0);
   const repairQueue = activeWorkOrders.filter(record => {
     if (record.stage === 'Waiting Device' || record.stage === 'Testing' || record.stage === 'Pickup' || record.stage === 'Completed') return false;
     return record.stage !== 'Parts';
   }).sort(compareRepairQueuePriority);
-  const todayPayments = collectedTodayPayments([...workOrders, ...sales], now);
-  const todayTransactions = collectedTodayTransactions([...workOrders, ...sales], now);
+  const todayPayments = collectedTodayPayments([...routedWorkOrders, ...routedSales], now);
+  const todayTransactions = collectedTodayTransactions([...routedWorkOrders, ...routedSales], now);
   const todayKey = localDayKey(now);
   const collectedToday = Math.round(todayPayments.reduce((sum, amount) => sum + amount, 0) * 100) / 100;
   const rawCloverTotal = input.cloverDailyTotals?.[todayKey];
   const cloverTotal = rawCloverTotal == null || String(rawCloverTotal).trim() === '' || !Number.isFinite(Number(rawCloverTotal)) ? null : Math.round(Number(rawCloverTotal) * 100) / 100;
   const variance = cloverTotal == null ? 0 : Math.round((cloverTotal - collectedToday) * 100) / 100;
   const cloverReconciliation = { date: todayKey, cloverTotal, posTotal: collectedToday, variance, reconciled: cloverTotal != null && Math.abs(variance) < 0.005 };
-  const globalAttention = cloverTotal != null && !cloverReconciliation.reconciled ? [{ code: 'clover-variance' as const, amount: variance, label: variance > 0 ? 'Clover total is higher than POS checkouts' : 'Clover total is lower than POS checkouts' }] : [];
+  const globalAttention = !resetAt && cloverTotal != null && !cloverReconciliation.reconciled ? [{ code: 'clover-variance' as const, amount: variance, label: variance > 0 ? 'Clover total is higher than POS checkouts' : 'Clover total is lower than POS checkouts' }] : [];
   const calendar = (input.calendarEvents || []).flatMap(event => {
     if (!event?.recurrenceRule) return [event];
     const occurrences = expandRecurringEvent(event, todayKey, todayKey);
     return occurrences.length ? occurrences : [];
   });
-  return { records: [...workOrders, ...sales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders, sales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday, paymentsToday: todayPayments.length, collectedTodayTransactions: todayTransactions, cloverReconciliation, globalAttention, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: sales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
+  return { records: [...routedWorkOrders, ...routedSales].sort((a, b) => timestamp(b.activityAt) - timestamp(a.activityAt)), workOrders: routedWorkOrders, sales: routedSales, activeWorkOrders, awaitingParts, readyForPickup, repairQueue, repairQueuePreview: repairQueue.slice(0, 8), needsAttention, repairStatistics, productDeliveries, collectedToday, paymentsToday: todayPayments.length, collectedTodayTransactions: todayTransactions, cloverReconciliation, globalAttention, stages, today: { tasks: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('task')), events: calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && !/task|delivery|consult/.test(calendarKind(event))), notes: (input.calendarNotes || []).filter(note => sameLocalDay(note?.date, now)), consultations: routedSales.filter(record => record.kind === 'consultation' && sameLocalDay(consultationDateFor(record), now)), deliveries: [...calendar.filter(event => sameLocalDay(event?.date || event?.start, now) && calendarKind(event).includes('delivery')), ...(input.purchaseOrders || []).filter(order => sameLocalDay(order?.expectedDeliveryDate || order?.eta, now))] } };
 }
 
 export function searchCommandCenterRecords(model: CommandCenterModel, query: string) {

@@ -168,11 +168,21 @@ const Toolbar: React.FC<{
           className="desktop-command-eod"
           onClick={() => dispatchOpenModal('eod')}
         >EOD</button> : null}
+        {drawerMode ? <button
+          className="desktop-command-eod"
+          onClick={() => dispatchOpenModal('eod', { showCart: true })}
+        >Cart</button> : null}
         {!drawerMode ? <button
           className="px-3 py-2 bg-amber-500 text-black font-semibold rounded shadow-sm border border-amber-400 hover:brightness-110 text-sm"
           onClick={() => dispatchOpenModal('eod')}
         >
           End of Day Report
+        </button> : null}
+        {!drawerMode ? <button
+          className="px-3 py-2 bg-[#BC13FE] text-white font-semibold rounded shadow-sm border border-[#d45cff] hover:brightness-110 text-sm"
+          onClick={() => dispatchOpenModal('eod', { showCart: true })}
+        >
+          Cart
         </button> : null}
         {!drawerMode ? <button
           className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm"

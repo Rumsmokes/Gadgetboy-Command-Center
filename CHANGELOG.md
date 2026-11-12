@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.40 (2026-11-12)
+
+- Adds secure Firebase Cloud Messaging enrollment for authenticated Android POS devices. Opening the updated app while logged in registers that device without exposing Firebase credentials to the client.
+- Adds a shop-scoped, authenticated push sender with a server-side idempotency ledger, preventing duplicate notification blasts across multiple active POS devices.
+- Adds the Command Center reset timestamp and Cart shortcut infrastructure while preserving invoices and historical reporting.
+
 ## v0.1.39 (2026-10-26)
 
 - Adds **EOD / Checkout Cart** directly to the Command Center, including the mobile Command Center.

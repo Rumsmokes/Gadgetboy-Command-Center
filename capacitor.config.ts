@@ -12,6 +12,9 @@ const config: CapacitorConfig = {
       smallIcon: 'gbpos_notification_icon',
       iconColor: '#BC13FE',
     },
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
   },
 };
 

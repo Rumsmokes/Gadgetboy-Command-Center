@@ -3,7 +3,9 @@ export type NotificationKind = 'consultation' | 'parts_delivery' | 'event' | 'te
 import { publicAsset } from './publicAsset';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { dispatchOpenModal } from './modalBus';
+import { supabase } from './supabase';
 
 export type NotificationRecord = {
   id?: number;
@@ -110,6 +112,62 @@ const DEVICE_PENDING_IDS_KEY = 'gbpos:deviceNotificationPendingIds:v1';
 const SEEN_RECORDS_PREFIX = 'gbpos:deviceNotificationSeen';
 let notificationPermissionRequest: Promise<DeviceNotificationSettings> | null = null;
 let notificationActionRoutingStarted = false;
+let pushRegistrationStarted = false;
+
+export async function registerPushToken(shopId?: string, userId?: string): Promise<void> {
+  if (pushRegistrationStarted || !Capacitor.isNativePlatform() || !shopId || !userId) return;
+  pushRegistrationStarted = true;
+  try {
+    const permission = await PushNotifications.checkPermissions();
+    const receive = permission.receive === 'prompt' ? await PushNotifications.requestPermissions() : permission;
+    if (receive.receive !== 'granted') return;
+    await PushNotifications.removeAllListeners();
+    await PushNotifications.addListener('registration', async ({ value }) => {
+      if (!value) return;
+      await supabase.from('push_notification_devices').upsert({ shop_id: shopId, user_id: userId, token: value, platform: 'android', enabled: true }, { onConflict: 'token' });
+    });
+    await PushNotifications.addListener('registrationError', () => { pushRegistrationStarted = false; });
+    await PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
+      const data: any = notification?.data || {};
+      notificationTap(data);
+    });
+    await PushNotifications.register();
+  } catch {
+    pushRegistrationStarted = false;
+  }
+}
+
+export function notificationTap(data: any): void {
+  if (data?.destination === 'update-history' && data?.workOrderId) {
+    dispatchOpenModal('clientUpdate', { recordId: Number(data.workOrderId), openHistory: true });
+    return;
+  }
+  if (data?.workOrderId) dispatchOpenModal('newWorkOrder', { workOrderId: Number(data.workOrderId) });
+  else if (data?.saleId) dispatchOpenModal('newSale', { id: Number(data.saleId) });
+}
+
+async function sendShopPush(payload: {
+  eventKey: string;
+  title: string;
+  body?: string;
+  destination?: string;
+  workOrderId?: number;
+  saleId?: number;
+}): Promise<void> {
+  const { data: sessionResult } = await supabase.auth.getSession();
+  if (!sessionResult.session?.user?.id) return;
+  const { data: staff } = await supabase
+    .from('staff_profiles')
+    .select('shop_id,status')
+    .eq('user_id', sessionResult.session.user.id)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (!staff?.shop_id) return;
+  const { error } = await supabase.functions.invoke('send-push-notification', {
+    body: { shopId: staff.shop_id, ...payload },
+  });
+  if (error) throw error;
+}
 
 function isValidHHmm(v: any): v is string {
   return /^\d{2}:\d{2}$/.test(String(v || ''));
@@ -513,6 +571,12 @@ async function syncNewRecordNotificationsForKey(
         customerId: row?.customerId != null ? Number(row.customerId) : undefined,
         readAt: null,
       });
+      void sendShopPush({
+        eventKey: `workOrder:new:${id}`,
+        title: `New work order #${id}`,
+        body: [customer, device].filter(Boolean).join(' - ') || undefined,
+        workOrderId: Number(id),
+      }).catch(() => {});
     } else {
       const customer = String(row?.customerName || '').trim();
       const item = String(
@@ -531,6 +595,12 @@ async function syncNewRecordNotificationsForKey(
         customerId: row?.customerId != null ? Number(row.customerId) : undefined,
         readAt: null,
       });
+      void sendShopPush({
+        eventKey: `sale:new:${id}`,
+        title: `New sale #${id}`,
+        body: [customer, item].filter(Boolean).join(' - ') || undefined,
+        saleId: Number(id),
+      }).catch(() => {});
     }
   }
   saveJson(storageKey, Array.from(seen).slice(-2000));
