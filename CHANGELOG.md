@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.46 (2026-11-15)
+
+- Adds a one-time **Remind me later** action to required Opening and Closing checklists; it returns at the technician’s selected later time without creating a fake completion.
+- Adds **Clear all** for historical missed-checklist alerts, preserving them as acknowledged rather than submitted.
+- Adds Admin checklist **Operating days** settings so closed days neither show a checklist gate nor count as missed.
+
 ## v0.1.45 (2026-11-15)
 
 - Prevents Supabase access-token renewal from replacing an open POS window with the loading screen.

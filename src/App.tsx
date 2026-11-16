@@ -606,6 +606,9 @@ function ScheduledDailyOperationsGate() {
       openingItems: Array.isArray(raw.openingItems) && raw.openingItems.length ? raw.openingItems : undefined,
       closingItems: Array.isArray(raw.closingItems) && raw.closingItems.length ? raw.closingItems : undefined,
       trackingStartedOn: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.trackingStartedOn || '')) ? raw.trackingStartedOn : today,
+      operatingDays: Array.isArray(raw.operatingDays) && raw.operatingDays.length
+        ? raw.operatingDays.map(Number).filter((day: number) => Number.isInteger(day) && day >= 0 && day <= 6)
+        : [0, 1, 2, 3, 4, 5, 6],
     };
     if (!record?.dailyOperationsSettings) {
       const now = new Date().toISOString();
@@ -617,13 +620,20 @@ function ScheduledDailyOperationsGate() {
     const complete = (period: 'opening' | 'closing') => submitted.some((row: any) => row?.dateKey === today && row?.period === period);
     const minutes = current.getHours() * 60 + current.getMinutes();
     const toMinutes = (value: string) => { const [hours, mins] = value.split(':').map(Number); return (hours || 0) * 60 + (mins || 0); };
+    if (!settings.operatingDays.includes(current.getDay())) { setDue(null); return; }
+    const deferrals = record?.dailyOperationsChecklistDeferrals || {};
+    const isDeferred = (period: 'opening' | 'closing') => {
+      const value = deferrals[`${today}:${period}`];
+      const remindAt = typeof value === 'string' ? value : value?.remindAt;
+      return Number.isFinite(Date.parse(String(remindAt || ''))) && Date.parse(String(remindAt)) > current.getTime();
+    };
     // Opening is first if both are overdue, then closing appears after it is submitted.
-    if (minutes >= toMinutes(settings.openingTime) && !complete('opening')) { setDue('opening'); return; }
-    if (minutes >= toMinutes(settings.closingTime) && !complete('closing')) { setDue('closing'); return; }
+    if (minutes >= toMinutes(settings.openingTime) && !complete('opening') && !isDeferred('opening')) { setDue('opening'); return; }
+    if (minutes >= toMinutes(settings.closingTime) && !complete('closing') && !isDeferred('closing')) { setDue('closing'); return; }
     setDue(null);
   }, []);
   useEffect(() => { void refreshDueChecklist(); const timer = window.setInterval(() => void refreshDueChecklist(), 30_000); return () => window.clearInterval(timer); }, [refreshDueChecklist]);
-  return due ? <DailyOperationsWindow period={due} required onSubmitted={() => void refreshDueChecklist()} /> : null;
+  return due ? <DailyOperationsWindow period={due} required onSubmitted={() => void refreshDueChecklist()} onRemindLater={() => void refreshDueChecklist()} /> : null;
 }
 
 const AppInner: React.FC<{
