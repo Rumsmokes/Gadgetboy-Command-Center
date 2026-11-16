@@ -206,13 +206,29 @@ export default function CommandCenter(props: Props) {
     if (isTestEnvironment()) return;
     const api: any = (window as any).api;
     const channel = supabase.channel('command-center-live-work-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, async () => {
-        await api?.cloudSyncCollection?.('workOrders', { bootstrapLimit: 2500 }).catch(() => null);
-        await refreshCollection('workOrders');
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' }, (payload: any) => {
+        // Realtime already contains the authoritative, newly-routed row. Apply it now so
+        // status buttons move the ticket and change the counters without waiting for disk.
+        if (payload?.new?.legacy_id != null) {
+          const record = mapCloudRow('repair', payload.new);
+          const key = String(record.id);
+          const terminal = (String(record?.status || '').toLowerCase() === 'closed' || !!record?.pickedUpAt || !!record?.clientPickupDate)
+            && !diagnosticCheckInClosureNeedsReview(record);
+          if (terminal) closedWorkOrderIdsRef.current.add(key);
+          else closedWorkOrderIdsRef.current.delete(key);
+          setData(current => ({
+            ...current,
+            workOrders: terminal
+              ? current.workOrders.filter(row => String(row.id) !== key)
+              : upsertCommandCenterWorkOrder(current.workOrders, record),
+          }));
+        }
+        // Reconcile the local cache afterward. Its change event is idempotent with the update above.
+        void api?.cloudSyncCollection?.('workOrders', { bootstrapLimit: 2500 }).catch(() => null);
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [refreshCollection]);
+  }, []);
   useEffect(()=>subscribeWorkOrderUpdates(record=>{loadGenerationRef.current += 1;const key=String(record?.id);const terminal=(String(record?.status||'').toLowerCase()==='closed'||!!record?.pickedUpAt||!!record?.clientPickupDate)&&!diagnosticCheckInClosureNeedsReview(record);if(terminal)closedWorkOrderIdsRef.current.add(key);else closedWorkOrderIdsRef.current.delete(key);setData(current=>({...current,workOrders:terminal?current.workOrders.filter(row=>String(row.id)!==key):upsertCommandCenterWorkOrder(current.workOrders,record)}));}),[]);
 
   const model = useMemo(() => buildCommandCenterModel(data), [data]);

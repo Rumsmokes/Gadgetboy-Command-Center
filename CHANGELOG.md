@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.44 (2026-11-15)
+
+- Applies every live work-order status update directly to the visible Command Center before the local cache refresh begins.
+- QR and in-app client updates now move the ticket and update Command Center totals/lane counts immediately for Diagnosing, Testing, Awaiting Parts, Ready for Pickup, Completed, and other routed states.
+
 ## v0.1.43 (2026-11-12)
 
 - Makes Command Center subscribe directly to live work-order changes so QR status updates immediately route tickets into Diagnosing, Testing, Pickup, and other matching lanes.
