@@ -322,6 +322,7 @@ const App: React.FC = () => {
   const [accessError, setAccessError] = useState('');
   const [accountAction, setAccountAction] = useState(hasAccountActionToken);
   const currentAuthUserIdRef = useRef<string | null>(null);
+  const cloudSessionInitializedRef = useRef(false);
 
   const loadStaffProfile = useCallback(async (nextSession: Session | null) => {
     const nextUserId = nextSession?.user?.id || null;
@@ -331,6 +332,7 @@ const App: React.FC = () => {
 
     if (!nextUserId) {
       currentAuthUserIdRef.current = null;
+      cloudSessionInitializedRef.current = false;
       setStaffProfile(null);
       setCloudReady(false);
       setCloudWarning('');
@@ -341,6 +343,7 @@ const App: React.FC = () => {
 
     if (!isSameUser) {
       setStaffProfile(null);
+      cloudSessionInitializedRef.current = false;
       setCloudReady(false);
       setCloudWarning('');
     }
@@ -397,6 +400,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (testEnvironment) {
+      cloudSessionInitializedRef.current = true;
       setCloudReady(true);
       void (window as any).api?.cloudClearSession?.();
       return;
@@ -408,12 +412,14 @@ const App: React.FC = () => {
       return () => { cancelled = true; };
     }
     if (!session?.access_token || !staffProfile?.shop_id) {
+      cloudSessionInitializedRef.current = false;
       setCloudReady(false);
       void api.cloudClearSession?.();
       return () => { cancelled = true; };
     }
     const cfg = getSupabaseRuntimeConfig();
-    setCloudReady(false);
+    const preserveRenderedWorkspace = Boolean(cloudSessionInitializedRef.current && staffProfile?.shop_id);
+    if (!preserveRenderedWorkspace) setCloudReady(false);
     setCloudWarning('');
     void api.cloudSetSession({
       supabaseUrl: cfg.supabaseUrl,
@@ -423,6 +429,7 @@ const App: React.FC = () => {
     }).then((res: any) => {
       if (cancelled) return;
       if (res?.ok) {
+        cloudSessionInitializedRef.current = true;
         setCloudReady(true);
         setRefreshKey((v) => v + 1);
       } else {

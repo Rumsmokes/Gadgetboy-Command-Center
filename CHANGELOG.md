@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.45 (2026-11-15)
+
+- Prevents Supabase access-token renewal from replacing an open POS window with the loading screen.
+- Keeps unsaved work-order, sale, and client-entry forms on screen while the authenticated cloud session refreshes in the background.
+
 ## v0.1.44 (2026-11-15)
 
 - Applies every live work-order status update directly to the visible Command Center before the local cache refresh begins.
